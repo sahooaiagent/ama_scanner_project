@@ -12,22 +12,22 @@ warnings.filterwarnings("ignore")
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
-EXCHANGE_ID = 'mexc'
+EXCHANGE_ID = 'binance'
 # SYMBOL_LIMIT will be set dynamically in main()
 MAX_WORKERS = 2     # Very safe parallelism to avoid IP bans
 TIMEFRAMES = ['1h', '2h', '3h', '4h', '5h', '6h', '8h', '12h', '1d']
-# Valid intervals in CCXT/MEXC: 1m, 5m, 15m, 30m, 1h, 2h, 4h, 1d, 1w, 1M
-# 3h, 5h, 6h, 8h, 12h need resampling.
+# Valid intervals in CCXT/Binance: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
+# We need to manually resample for 3h and 5h as they aren't native.
 
 CCXT_TIMEFRAMES = {
     '1h': '1h',
-    '2h': '1h', # Resample
+    '2h': '2h',
     '3h': '1h', # Resample
     '4h': '4h',
     '5h': '1h', # Resample
-    '6h': '1h', # Resample
-    '8h': '4h', # Resample from 4h
-    '12h': '4h', # Resample from 4h
+    '6h': '6h',
+    '8h': '8h',
+    '12h': '12h',
     '1d': '1d'
 }
 
@@ -103,16 +103,11 @@ def get_top_symbols(exchange, limit=50):
     try:
         tickers = exchange.fetch_tickers()
         
-        # Filter for Perpetual pairs (MEXC format: SYMBOL/USDT:USDT)
-        # We look for ':USDT' which is the standard settlement for swaps
-        perp_pairs = {k: v for k, v in tickers.items() if ':USDT' in k}
+        # Filter for USDT pairs (Binance Futures format: SYMBOL/USDT:USDT)
+        usdt_pairs = {k: v for k, v in tickers.items() if '/USDT' in k or ':USDT' in k}
         
-        if not perp_pairs:
-            # Fallback if the format is different
-            perp_pairs = {k: v for k, v in tickers.items() if '/USDT' in k}
-            
         # Sort by 24h quote volume
-        sorted_pairs = sorted(perp_pairs.items(), key=lambda x: x[1]['quoteVolume'], reverse=True)
+        sorted_pairs = sorted(usdt_pairs.items(), key=lambda x: x[1]['quoteVolume'], reverse=True)
         
         top_symbols = [pair[0] for pair in sorted_pairs[:limit]]
         return top_symbols
@@ -422,9 +417,9 @@ def main():
     print(f"Timeframes: {TIMEFRAMES}")
     print(f"Max Workers: {MAX_WORKERS}")
     
-    # Initialize Exchange (MEXC)
-    exchange = ccxt.mexc({
-        'options': {'defaultType': 'swap'},
+    # Initialize Exchange (Binance)
+    exchange = ccxt.binance({
+        'options': {'defaultType': 'future'},
         'enableRateLimit': True
     })
     

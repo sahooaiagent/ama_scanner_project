@@ -1,4 +1,4 @@
-## How to Run the AMA Pro Crypto Scanner Locally (MEXC Edition)
+## How to Run the AMA Pro Crypto Scanner Locally (Binance Edition)
 
 Follow these steps to run the scanner on your machine.
 
@@ -6,7 +6,7 @@ Follow these steps to run the scanner on your machine.
 
 1.  **Terminal**: You need to use the "Terminal" application on your Mac.
 2.  **Python 3**: Ensure Python 3 is installed. You can check by running `python3 --version`.
-3.  **MEXC Account**: The scanner now uses MEXC for data.
+3.  **Binance Access**: The scanner uses Binance for data.
 
 ## Step-by-Step Instructions
 
@@ -31,9 +31,9 @@ Now, execute the scanner script:
 ```bash
 python3 ama_pro_scanner.py
 ```
-**New Feature**: You will be prompted to enter how many symbols you want to scan (e.g., 100 or 500). Just type the number and press Enter.
+**Feature**: You will be prompted to enter how many symbols you want to scan (e.g., 100 or 500). Just type the number and press Enter.
 
-The scanner will start fetching data from **MEXC** and printing signals to the screen.
+The scanner will start fetching data from **Binance** and printing signals to the screen.
 
 ### 5. Check Results
 - **Real-time signals** will appear in the terminal (e.g., `!!! SIGNAL FOUND...`).
