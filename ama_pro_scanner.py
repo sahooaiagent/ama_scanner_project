@@ -21,13 +21,13 @@ TIMEFRAMES = ['1h', '2h', '3h', '4h', '5h', '6h', '8h', '12h', '1d']
 
 CCXT_TIMEFRAMES = {
     '1h': '1h',
-    '2h': '2h',
+    '2h': '1h', # Resample
     '3h': '1h', # Resample
     '4h': '4h',
     '5h': '1h', # Resample
-    '6h': '6h',
-    '8h': '8h',
-    '12h': '12h',
+    '6h': '1h', # Resample
+    '8h': '4h', # Resample from 4h
+    '12h': '4h', # Resample from 4h
     '1d': '1d'
 }
 
@@ -351,30 +351,40 @@ def scan_symbol(exchange, symbol):
     """Worker function to scan a single symbol across all timeframes."""
     found_signals = []
     
-    # Optimization: Fetch 1h data once (max 1500 bars)
-    # This allows resampling 1h, 2h, 3h, 4h, 5h, 6h from ONE request.
+    # Optimization: Fetch 1h data once (max 1500 bars) and 4h data once
     h1_df_source = None
+    h4_df_source = None
     try:
         h1_df_source = fetch_ohlcv(exchange, symbol, '1h', limit=1500)
     except Exception as e:
-        if "418" in str(e) or "429" in str(e):
-            time.sleep(10) # Cooling down if hit
+        if "418" in str(e) or "429" in str(e): time.sleep(10)
         return []
+    
+    try:
+        h4_df_source = fetch_ohlcv(exchange, symbol, '4h', limit=500)
+    except Exception:
+        pass
 
     for tf in TIMEFRAMES:
         try:
             df = None
-            # Resample common intraday timeframes from 1h source
-            if tf in ['1h', '2h', '3h', '4h', '5h', '6h'] and h1_df_source is not None:
+            # Resample timeframes from 1h source
+            if tf in ['1h', '2h', '3h', '5h', '6h'] and h1_df_source is not None:
                 if tf == '1h':
                     df = h1_df_source.tail(300)
                 else:
-                    # Resample logic
                     df = h1_df_source.resample(tf).agg({
                         'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
                     }).dropna().tail(300)
-            else:
-                # Fetch separate requests for 8h, 12h, 1d
+            # Resample timeframes from 4h source
+            elif tf in ['4h', '8h', '12h'] and h4_df_source is not None:
+                if tf == '4h':
+                    df = h4_df_source.tail(300)
+                else:
+                    df = h4_df_source.resample(tf).agg({
+                        'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+                    }).dropna().tail(300)
+            elif tf == '1d':
                 df = fetch_ohlcv(exchange, symbol, tf, limit=300)
             
             if df is not None and not df.empty:
