@@ -12,16 +12,12 @@ warnings.filterwarnings("ignore")
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
-EXCHANGE_ID = 'binance'
-SYMBOL_LIMIT = 500  # Number of top pairs to scan
+EXCHANGE_ID = 'mexc'
+# SYMBOL_LIMIT will be set dynamically in main()
 MAX_WORKERS = 2     # Very safe parallelism to avoid IP bans
 TIMEFRAMES = ['1h', '2h', '3h', '4h', '5h', '6h', '8h', '12h', '1d']
-# Valid intervals in CCXT/Binance: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
-# We need to manually resample for non-standard if any, but Binance supports most.
-# 5h is NOT standard. We will need to fetch 1h and resample for 5h.
-# 3h is NOT standard on Binance Futures (usually). We'll check.
-# Update: Binance supports 1h, 2h, 4h, 6h, 8h, 12h, 1d.
-# 3h and 5h need resampling.
+# Valid intervals in CCXT/MEXC: 1m, 5m, 15m, 30m, 1h, 2h, 4h, 1d, 1w, 1M
+# 3h, 5h, 6h, 8h, 12h need resampling.
 
 CCXT_TIMEFRAMES = {
     '1h': '1h',
@@ -103,15 +99,20 @@ def calculate_bb(series, length, mult):
 # -----------------------------------------------------------------------------
 
 def get_top_symbols(exchange, limit=50):
-    print(f"Fetching top {limit} symbols from Binance Futures...")
+    print(f"Fetching top {limit} symbols from {EXCHANGE_ID.upper()} Futures...")
     try:
         tickers = exchange.fetch_tickers()
         
-        # Filter for USDT pairs (Binance Futures format: SYMBOL/USDT:USDT)
-        usdt_pairs = {k: v for k, v in tickers.items() if '/USDT' in k or ':USDT' in k}
+        # Filter for Perpetual pairs (MEXC format: SYMBOL/USDT:USDT)
+        # We look for ':USDT' which is the standard settlement for swaps
+        perp_pairs = {k: v for k, v in tickers.items() if ':USDT' in k}
         
+        if not perp_pairs:
+            # Fallback if the format is different
+            perp_pairs = {k: v for k, v in tickers.items() if '/USDT' in k}
+            
         # Sort by 24h quote volume
-        sorted_pairs = sorted(usdt_pairs.items(), key=lambda x: x[1]['quoteVolume'], reverse=True)
+        sorted_pairs = sorted(perp_pairs.items(), key=lambda x: x[1]['quoteVolume'], reverse=True)
         
         top_symbols = [pair[0] for pair in sorted_pairs[:limit]]
         return top_symbols
@@ -398,18 +399,27 @@ def scan_symbol(exchange, symbol):
 
 def main():
     start_time = time.time()
-    print("Starting AMA Pro Logic Scanner (Multithreaded)...")
+    print("Starting AMA Pro Logic Scanner (MEXC Edition)...")
+    
+    # User Configuration: Number of symbols
+    try:
+        limit_input = input("Enter the number of symbols to scan (e.g., 100, 200, 500) [Default 100]: ").strip()
+        current_symbol_limit = int(limit_input) if limit_input else 100
+    except ValueError:
+        print("Invalid input. Using default: 100")
+        current_symbol_limit = 100
+
     print(f"Timeframes: {TIMEFRAMES}")
     print(f"Max Workers: {MAX_WORKERS}")
     
-    # Initialize Exchange
-    exchange = ccxt.binance({
-        'options': {'defaultType': 'future'},
+    # Initialize Exchange (MEXC)
+    exchange = ccxt.mexc({
+        'options': {'defaultType': 'swap'},
         'enableRateLimit': True
     })
     
     # Get Top Symbols
-    symbols = get_top_symbols(exchange, limit=SYMBOL_LIMIT)
+    symbols = get_top_symbols(exchange, limit=current_symbol_limit)
     num_symbols = len(symbols)
     print(f"Found {num_symbols} symbols. Starting parallel scan...")
     
