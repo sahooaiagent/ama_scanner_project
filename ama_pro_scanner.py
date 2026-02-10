@@ -15,19 +15,15 @@ warnings.filterwarnings("ignore")
 EXCHANGE_ID = 'binance'
 # SYMBOL_LIMIT will be set dynamically in main()
 MAX_WORKERS = 2     # Very safe parallelism to avoid IP bans
-TIMEFRAMES = ['1h', '2h', '3h', '4h', '5h', '6h', '8h', '12h', '1d']
+TIMEFRAMES = ['15m', '30m', '1h', '2h', '4h', '1d']
 # Valid intervals in CCXT/Binance: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
-# We need to manually resample for 3h and 5h as they aren't native.
 
 CCXT_TIMEFRAMES = {
+    '15m': '15m',
+    '30m': '30m',
     '1h': '1h',
     '2h': '2h',
-    '3h': '1h', # Resample
     '4h': '4h',
-    '5h': '1h', # Resample
-    '6h': '6h',
-    '8h': '8h',
-    '12h': '12h',
     '1d': '1d'
 }
 
@@ -346,17 +342,11 @@ def scan_symbol(exchange, symbol):
     """Worker function to scan a single symbol across all timeframes."""
     found_signals = []
     
-    # Optimization: Fetch 1h data once (max 1500 bars) and 4h data once
+    # Optimization: Fetch sources to resample if needed
     h1_df_source = None
-    h4_df_source = None
     try:
-        h1_df_source = fetch_ohlcv(exchange, symbol, '1h', limit=1500)
-    except Exception as e:
-        if "418" in str(e) or "429" in str(e): time.sleep(10)
-        return []
-    
-    try:
-        h4_df_source = fetch_ohlcv(exchange, symbol, '4h', limit=500)
+        # Use 1h for 1h and 2h
+        h1_df_source = fetch_ohlcv(exchange, symbol, '1h', limit=1000)
     except Exception:
         pass
 
@@ -364,22 +354,15 @@ def scan_symbol(exchange, symbol):
         try:
             df = None
             # Resample timeframes from 1h source
-            if tf in ['1h', '2h', '3h', '5h', '6h'] and h1_df_source is not None:
+            if tf in ['1h', '2h'] and h1_df_source is not None:
                 if tf == '1h':
                     df = h1_df_source.tail(300)
                 else:
                     df = h1_df_source.resample(tf).agg({
                         'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
                     }).dropna().tail(300)
-            # Resample timeframes from 4h source
-            elif tf in ['4h', '8h', '12h'] and h4_df_source is not None:
-                if tf == '4h':
-                    df = h4_df_source.tail(300)
-                else:
-                    df = h4_df_source.resample(tf).agg({
-                        'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
-                    }).dropna().tail(300)
-            elif tf == '1d':
+            else:
+                # Fetch directly for 15m, 30m, 4h, 1d
                 df = fetch_ohlcv(exchange, symbol, tf, limit=300)
             
             if df is not None and not df.empty:
@@ -408,7 +391,7 @@ def main():
     
     # User Configuration: Number of symbols
     try:
-        limit_input = input("Enter the number of symbols to scan (e.g., 100, 200, 500) [Default 100]: ").strip()
+        limit_input = input("Enter the number of crypto to be searched (100, 200, 300, 400, 500) [Default 100]: ").strip()
         current_symbol_limit = int(limit_input) if limit_input else 100
     except ValueError:
         print("Invalid input. Using default: 100")
