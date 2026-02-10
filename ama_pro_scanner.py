@@ -4,6 +4,7 @@ import numpy as np
 import time
 import datetime
 import warnings
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Suppress warnings
@@ -390,12 +391,26 @@ def main():
     print("Starting AMA Pro Logic Scanner (MEXC Edition)...")
     
     # User Configuration: Number of symbols
-    try:
-        limit_input = input("Enter the number of crypto to be searched (100, 200, 300, 400, 500) [Default 100]: ").strip()
-        current_symbol_limit = int(limit_input) if limit_input else 100
-    except ValueError:
-        print("Invalid input. Using default: 100")
-        current_symbol_limit = 100
+    # Check if a limit was passed as a command line argument
+    if len(sys.argv) > 1:
+        try:
+            current_symbol_limit = int(sys.argv[1])
+            print(f"Using symbol limit from argument: {current_symbol_limit}")
+        except ValueError:
+            print(f"Invalid argument '{sys.argv[1]}'. Using default: 100")
+            current_symbol_limit = 100
+    else:
+        # If output is redirected (not a TTY), skip interactive input
+        if not sys.stdout.isatty():
+            print("Non-interactive mode (redirection) detected. Using default symbol limit: 100")
+            current_symbol_limit = 100
+        else:
+            try:
+                limit_input = input("Enter the number of crypto to be searched (100, 200, 300, 400, 500) [Default 100]: ").strip()
+                current_symbol_limit = int(limit_input) if limit_input else 100
+            except (EOFError, ValueError):
+                print("Invalid input or EOF. Using default: 100")
+                current_symbol_limit = 100
 
     print(f"Timeframes: {TIMEFRAMES}")
     print(f"Max Workers: {MAX_WORKERS}")
