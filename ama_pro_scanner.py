@@ -4,6 +4,7 @@ import numpy as np
 import time
 import datetime
 import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
@@ -13,7 +14,8 @@ warnings.filterwarnings("ignore")
 # -----------------------------------------------------------------------------
 EXCHANGE_ID = 'binance'
 SYMBOL_LIMIT = 500  # Number of top pairs to scan
-TIMEFRAMES = ['1h', '2h', '3h', '4h', '6h', '8h', '12h', '1d']
+MAX_WORKERS = 2     # Very safe parallelism to avoid IP bans
+TIMEFRAMES = ['1h', '2h', '3h', '4h', '5h', '6h', '8h', '12h', '1d']
 # Valid intervals in CCXT/Binance: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
 # We need to manually resample for non-standard if any, but Binance supports most.
 # 5h is NOT standard. We will need to fetch 1h and resample for 5h.
@@ -114,31 +116,44 @@ def get_top_symbols(exchange, limit=50):
         top_symbols = [pair[0] for pair in sorted_pairs[:limit]]
         return top_symbols
     except Exception as e:
+        if "418" in str(e) or "429" in str(e):
+            print("Initial symbol fetch rate limited. Retrying in 30s...")
+            time.sleep(30)
+            return get_top_symbols(exchange, limit)
         print(f"Error fetching symbols: {e}")
         return []
 
 def fetch_ohlcv(exchange, symbol, timeframe, limit=300):
-    try:
-        # Handle resampling for non-standard timeframes
-        fetch_tf = CCXT_TIMEFRAMES.get(timeframe, timeframe)
-        
-        # If we need to resample (e.g., 5h), we need more data
-        fetch_limit = limit * 5 if timeframe in ['3h', '5h'] else limit
-        
-        ohlcv = exchange.fetch_ohlcv(symbol, fetch_tf, limit=fetch_limit)
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df.set_index('timestamp', inplace=True)
-        
-        if timeframe == '3h':
-            df = df.resample('3h').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'})
-        elif timeframe == '5h':
-            df = df.resample('5h').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'})
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            # Handle resampling for non-standard timeframes
+            fetch_tf = CCXT_TIMEFRAMES.get(timeframe, timeframe)
             
-        return df.dropna()
-    except Exception as e:
-        print(f"Error fetching data for {symbol} {timeframe}: {e}")
-        return None
+            # If we need to resample (e.g., 5h), we need more data
+            fetch_limit = limit * 5 if timeframe in ['3h', '5h'] else limit
+            
+            ohlcv = exchange.fetch_ohlcv(symbol, fetch_tf, limit=fetch_limit)
+            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df.set_index('timestamp', inplace=True)
+            
+            if timeframe == '3h':
+                df = df.resample('3h').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'})
+            elif timeframe == '5h':
+                df = df.resample('5h').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'})
+                
+            return df.dropna()
+        except Exception as e:
+            if "418" in str(e) or "429" in str(e):
+                wait_time = (attempt + 1) * 30 # Wait 30, 60, 90s
+                print(f"Rate limited on {symbol}. Waiting {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                if attempt == max_retries - 1:
+                    print(f"Error fetching data for {symbol} {timeframe}: {e}")
+                time.sleep(1)
+    return None
 
 # -----------------------------------------------------------------------------
 # AMA Pro Logic
@@ -328,12 +343,64 @@ def apply_ama_pro_logic(df):
     return signal
 
 # -----------------------------------------------------------------------------
+# Worker Function
+# -----------------------------------------------------------------------------
+
+def scan_symbol(exchange, symbol):
+    """Worker function to scan a single symbol across all timeframes."""
+    found_signals = []
+    
+    # Optimization: Fetch 1h data once (max 1500 bars)
+    # This allows resampling 1h, 2h, 3h, 4h, 5h, 6h from ONE request.
+    h1_df_source = None
+    try:
+        h1_df_source = fetch_ohlcv(exchange, symbol, '1h', limit=1500)
+    except Exception as e:
+        if "418" in str(e) or "429" in str(e):
+            time.sleep(10) # Cooling down if hit
+        return []
+
+    for tf in TIMEFRAMES:
+        try:
+            df = None
+            # Resample common intraday timeframes from 1h source
+            if tf in ['1h', '2h', '3h', '4h', '5h', '6h'] and h1_df_source is not None:
+                if tf == '1h':
+                    df = h1_df_source.tail(300)
+                else:
+                    # Resample logic
+                    df = h1_df_source.resample(tf).agg({
+                        'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+                    }).dropna().tail(300)
+            else:
+                # Fetch separate requests for 8h, 12h, 1d
+                df = fetch_ohlcv(exchange, symbol, tf, limit=300)
+            
+            if df is not None and not df.empty:
+                signal = apply_ama_pro_logic(df)
+                if signal:
+                    found_signals.append({
+                        'Crypto Name': symbol,
+                        'Timeperiod': tf,
+                        'Signal': signal,
+                        'Timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    })
+        except Exception:
+            pass
+            
+    # Tiny pause between symbols to spread requests
+    time.sleep(0.5)
+    return found_signals
+
+# -----------------------------------------------------------------------------
 # Main Execution
 # -----------------------------------------------------------------------------
 
 def main():
-    print("Starting AMA Pro Logic Scanner...")
+    start_time = time.time()
+    print("Starting AMA Pro Logic Scanner (Multithreaded)...")
     print(f"Timeframes: {TIMEFRAMES}")
+    print(f"Max Workers: {MAX_WORKERS}")
     
     # Initialize Exchange
     exchange = ccxt.binance({
@@ -343,53 +410,43 @@ def main():
     
     # Get Top Symbols
     symbols = get_top_symbols(exchange, limit=SYMBOL_LIMIT)
-    print(f"Found {len(symbols)} symbols. Starting scan...")
+    num_symbols = len(symbols)
+    print(f"Found {num_symbols} symbols. Starting parallel scan...")
     
-    results = []
+    all_results = []
     
-    for i, symbol in enumerate(symbols):
-        print(f"Scanning {i+1}/{len(symbols)}: {symbol}...")
-            
-        for tf in TIMEFRAMES:
-            # Fetch Data
-            try:
-                # Need enough history for lookbacks (200 EMA + buffers)
-                df = fetch_ohlcv(exchange, symbol, tf, limit=300)
-                
-                if df is not None:
-                    # Apply Logic
-                    signal = apply_ama_pro_logic(df)
-                    
-                    if signal:
-                        print(f"!!! SIGNAL FOUND: {symbol} [{tf}] -> {signal}")
-                        results.append({
-                            'Crypto Name': symbol,
-                            'Timeperiod': tf,
-                            'Signal': signal,
-                            'Timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        })
-                        
-                # Be nice to API (CCXT handles rate limit now)
-                # time.sleep(0.1)
-                pass
-                
-            except Exception as e:
-                print(f"Error processing {symbol} {tf}: {e}")
-                continue
+    # Use ThreadPoolExecutor for parallel processing
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        # Create a dictionary to keep track of futures
+        future_to_symbol = {executor.submit(scan_symbol, exchange, symbol): symbol for symbol in symbols}
         
-        # Rate limit (CCXT handles it)
-        # time.sleep(0.5)
+        count = 0
+        for future in as_completed(future_to_symbol):
+            symbol = future_to_symbol[future]
+            try:
+                results = future.result()
+                if results:
+                    all_results.extend(results)
+                    for res in results:
+                        print(f"!!! SIGNAL FOUND: {res['Crypto Name']} [{res['Timeperiod']}] -> {res['Signal']}")
+            except Exception as e:
+                print(f"Symbol {symbol} generated an exception: {e}")
+            
+            count += 1
+            if count % 10 == 0 or count == num_symbols:
+                print(f"Progress: {count}/{num_symbols} symbols completed...")
         
     # Output Results
+    duration = time.time() - start_time
     print("\n" + "="*50)
-    print("SCAN RESULTS")
+    print(f"SCAN COMPLETED in {duration/60:.2f} minutes")
     print("="*50)
     
-    if not results:
+    if not all_results:
         print("No signals found matching criteria.")
     else:
         # Create DataFrame
-        results_df = pd.DataFrame(results)
+        results_df = pd.DataFrame(all_results)
         print(results_df)
         
         # Save to CSV
