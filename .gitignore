@@ -5,4 +5,8 @@ __pycache__/
 env/
 *.csv
 .idea/
+*.xlsx
 .vscode/
+.env
+scan_log.txt
+test_tty.txt

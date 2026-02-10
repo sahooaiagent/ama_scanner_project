@@ -6,6 +6,19 @@ import datetime
 import warnings
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import smtplib
+import ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import os
+
+# Load .env file if it exists
+if os.path.exists('.env'):
+    with open('.env') as f:
+        for line in f:
+            if '=' in line:
+                key, value = line.strip().split('=', 1)
+                os.environ[key] = value
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
@@ -18,6 +31,11 @@ EXCHANGE_ID = 'binance'
 MAX_WORKERS = 2     # Very safe parallelism to avoid IP bans
 TIMEFRAMES = ['15m', '30m', '1h', '2h', '4h', '1d']
 # Valid intervals in CCXT/Binance: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
+
+# Gmail Configuration
+GMAIL_USER = 'sahooaiagent@gmail.com'
+GMAIL_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '') # Set this in your environment or replace with App Password
+RECEIVER_EMAIL = 'sahooaiagent@gmail.com'
 
 CCXT_TIMEFRAMES = {
     '15m': '15m',
@@ -336,6 +354,50 @@ def apply_ama_pro_logic(df):
     return signal
 
 # -----------------------------------------------------------------------------
+# Notification Logic
+# -----------------------------------------------------------------------------
+
+def send_gmail_notification(signals):
+    """Sends found signals or status report via Gmail."""
+    if not GMAIL_PASSWORD:
+        print("\n[WARNING] Gmail App Password not set. Skipping email notification.")
+        print("To enable email, set GMAIL_APP_PASSWORD environment variable or update the script.")
+        return
+
+    print(f"Sending email notification to {RECEIVER_EMAIL}...")
+    
+    # Create the email content
+    if signals:
+        subject = f"AMA Pro Scanner Alert: {len(signals)} Signals Found"
+        body_text = f"AMA Pro Scanner detected the following {len(signals)} signals:\n\n"
+        body_text += f"{'Crypto Name':<15} | {'Timeperiod':<10} | {'Signal':<10} | {'Timestamp'}\n"
+        body_text += "-" * 70 + "\n"
+        for s in signals:
+            body_text += f"{s['Crypto Name']:<15} | {s['Timeperiod']:<10} | {s['Signal']:<10} | {s['Timestamp']}\n"
+    else:
+        subject = "AMA Pro Scanner: Daily Status (No Signals)"
+        body_text = "AMA Pro Scanner completed its daily run. No signals were detected matching your criteria.\n"
+
+    body_text += "\n\nHappy Trading!"
+
+    # Create the MIME message
+    message = MIMEMultipart()
+    message["From"] = GMAIL_USER
+    message["To"] = RECEIVER_EMAIL
+    message["Subject"] = subject
+    message.attach(MIMEText(body_text, "plain"))
+
+    # Send the email
+    context = ssl.create_default_context()
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+            server.login(GMAIL_USER, GMAIL_PASSWORD)
+            server.sendmail(GMAIL_USER, RECEIVER_EMAIL, message.as_string())
+        print("Email notification sent successfully.")
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+
+# -----------------------------------------------------------------------------
 # Worker Function
 # -----------------------------------------------------------------------------
 
@@ -449,23 +511,27 @@ def main():
             if count % 10 == 0 or count == num_symbols:
                 print(f"Progress: {count}/{num_symbols} symbols completed...")
         
-    # Output Results
-    duration = time.time() - start_time
-    print("\n" + "="*50)
-    print(f"SCAN COMPLETED in {duration/60:.2f} minutes")
-    print("="*50)
+    # Process and Output Results
+    results_df = pd.DataFrame(all_results)
+    
+    # Always save a CSV (even if empty)
+    timestamp_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"ama_pro_scan_results_{timestamp_str}.csv"
+    results_df.to_csv(filename, index=False)
+    print(f"\nResults saved to {filename}")
     
     if not all_results:
         print("No signals found matching criteria.")
     else:
-        # Create DataFrame
-        results_df = pd.DataFrame(all_results)
         print(results_df)
-        
-        # Save to CSV
-        filename = f"ama_pro_scan_results_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        results_df.to_csv(filename, index=False)
-        print(f"\nResults saved to {filename}")
+
+    # Always send Gmail Notification (status report)
+    send_gmail_notification(all_results)
+
+    duration = time.time() - start_time
+    print("\n" + "="*50)
+    print(f"SCAN COMPLETED in {duration/60:.2f} minutes")
+    print("="*50)
 
 if __name__ == "__main__":
     main()
