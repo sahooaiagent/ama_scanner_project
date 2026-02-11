@@ -329,8 +329,8 @@ def apply_ama_pro_logic(df):
     # To be accurate to Pine, valid needs to account for previous signals.
     # Since we are scanning for *current* alerts, we check if the LAST CLOSED CANDLE triggered a signal.
     
-    last_row = df.iloc[-1]
-    last_idx = df.index[-1]
+    last_row = df.iloc[-2]
+    last_idx = df.index[-2]
     
     signal = None
     
