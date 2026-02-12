@@ -324,6 +324,19 @@ def apply_ama_pro_logic(df):
     # Crossunder: Fast < Slow AND PrevFast >= PrevSlow
     df['shortCondition'] = (df['adaptiveEmaFast'] < df['adaptiveEmaSlow']) & (df['prev_fast'] >= df['prev_slow'])
     
+    # --- Additional Filters to Reduce False Signals ---
+    
+    # 1. EMA Separation Filter: Require minimum separation between EMAs
+    min_ema_separation_pct = 0.15  # 0.15% minimum separation
+    ema_separation_pct = abs(df['adaptiveEmaFast'] - df['adaptiveEmaSlow']) / df['close'] * 100
+    df['ema_separation_valid'] = ema_separation_pct >= min_ema_separation_pct
+    
+    # 2. Price Confirmation Filter: Price should align with signal direction
+    # For LONG: price should be at or above fast EMA (within 0.2% tolerance)
+    # For SHORT: price should be at or below fast EMA (within 0.2% tolerance)
+    df['price_confirms_long'] = df['close'] >= df['adaptiveEmaFast'] * 0.998
+    df['price_confirms_short'] = df['close'] <= df['adaptiveEmaFast'] * 1.002
+    
     # --- Filtering (Min Bars Between) ---
     # This is iterative, so we'll just check the *last* row for a signal, assuming we just want "Current Signal"
     # To be accurate to Pine, valid needs to account for previous signals.
@@ -335,19 +348,36 @@ def apply_ama_pro_logic(df):
     signal = None
     
     if last_row['longCondition']:
-        # Regime Filter check for Long
-        # if Bearish regime -> Invalid
-        # if Neutral and Momentum < 0 -> Invalid (simplified)
-        if last_row['directionRegime'] == 'Bearish':
-            pass
+        # Enhanced Regime Filter check for Long
+        # Filter out if:
+        # 1. Bearish regime
+        # 2. EMA separation too small (whipsaw)
+        # 3. Price doesn't confirm the signal
+        # 4. Ranging + Neutral (choppy market)
+        is_choppy = (last_row['trendRegime'] == 'Ranging') and (last_row['directionRegime'] == 'Neutral')
+        
+        if (last_row['directionRegime'] == 'Bearish' or
+            not last_row['ema_separation_valid'] or
+            not last_row['price_confirms_long'] or
+            is_choppy):
+            pass  # Filter out
         else:
             signal = "LONG"
             
     if last_row['shortCondition']:
-        # Regime Filter check for Short
-        # if Bullish regime -> Invalid
-        if last_row['directionRegime'] == 'Bullish':
-            pass
+        # Enhanced Regime Filter check for Short
+        # Filter out if:
+        # 1. Bullish regime
+        # 2. EMA separation too small (whipsaw)
+        # 3. Price doesn't confirm the signal
+        # 4. Ranging + Neutral (choppy market)
+        is_choppy = (last_row['trendRegime'] == 'Ranging') and (last_row['directionRegime'] == 'Neutral')
+        
+        if (last_row['directionRegime'] == 'Bullish' or
+            not last_row['ema_separation_valid'] or
+            not last_row['price_confirms_short'] or
+            is_choppy):
+            pass  # Filter out
         else:
             signal = "SHORT"
             
