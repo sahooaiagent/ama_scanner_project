@@ -352,60 +352,78 @@ def apply_ama_pro_logic(df):
     df['price_confirms_long'] = df['close'] >= df['adaptiveEmaFast'] * 0.998
     df['price_confirms_short'] = df['close'] <= df['adaptiveEmaFast'] * 1.002
     
-    # --- Filtering (Min Bars Between) ---
-    # This is iterative, so we'll just check the *last* row for a signal, assuming we just want "Current Signal"
-    # To be accurate to Pine, valid needs to account for previous signals.
-    # Since we are scanning for *current* alerts, we check if the LAST CLOSED CANDLE triggered a signal.
-    
-    last_row = df.iloc[-2]
+    # --- Filtering (Last 5 Candles) ---
+    # Check if BUY/SELL signals appeared in the last 5 candles
+    # and validate that price hasn't invalidated the signal
     
     signal = None
     crossover_angle = None
     
-    if last_row['longCondition'] or last_row['shortCondition']:
-        # Calculate slopes over last 3 candles for smoother angle
-        lookback = min(3, len(df) - 2)
-        fast_slope = (df['adaptiveEmaFast'].iloc[-2] - df['adaptiveEmaFast'].iloc[-2-lookback]) / lookback
-        slow_slope = (df['adaptiveEmaSlow'].iloc[-2] - df['adaptiveEmaSlow'].iloc[-2-lookback]) / lookback
-        
-        # Angle between the two EMAs (in degrees)
-        # Using arctangent of the slope difference normalized by price
-        slope_diff = (fast_slope - slow_slope) / last_row['close']
-        crossover_angle = np.degrees(np.arctan(slope_diff * 100))  # Scale for visibility
+    # Look back at the last 5 closed candles (excluding current incomplete candle)
+    lookback_candles = min(5, len(df) - 1)
     
-    if last_row['longCondition']:
-        # Enhanced Regime Filter check for Long
-        # Filter out if:
-        # 1. Bearish regime
-        # 2. EMA separation too small (whipsaw)
-        # 3. Price doesn't confirm the signal
-        # 4. Ranging + Neutral (choppy market)
-        is_choppy = (last_row['trendRegime'] == 'Ranging') and (last_row['directionRegime'] == 'Neutral')
+    for i in range(2, lookback_candles + 2):  # Check candles -2 to -6
+        candle_idx = -i
+        candle = df.iloc[candle_idx]
+        current_price = df['close'].iloc[-1]  # Current (most recent) price
         
-        if (last_row['directionRegime'] == 'Bearish' or
-            not last_row['ema_separation_valid'] or
-            not last_row['price_confirms_long'] or
-            is_choppy):
-            pass  # Filter out
-        else:
+        # Check for LONG signal
+        if candle['longCondition']:
+            # Enhanced Regime Filter check for Long
+            is_choppy = (candle['trendRegime'] == 'Ranging') and (candle['directionRegime'] == 'Neutral')
+            
+            if (candle['directionRegime'] == 'Bearish' or
+                not candle['ema_separation_valid'] or
+                not candle['price_confirms_long'] or
+                is_choppy):
+                continue  # Skip this candle
+            
+            # Price Validation: Current price should NOT have gone above the buy candle's high
+            # (If it did, the signal may have already played out)
+            buy_candle_high = df['high'].iloc[candle_idx]
+            if current_price > buy_candle_high * 1.02:  # Allow 2% tolerance
+                continue  # Signal invalidated
+            
+            # Valid LONG signal found
             signal = "LONG"
             
-    if last_row['shortCondition']:
-        # Enhanced Regime Filter check for Short
-        # Filter out if:
-        # 1. Bullish regime
-        # 2. EMA separation too small (whipsaw)
-        # 3. Price doesn't confirm the signal
-        # 4. Ranging + Neutral (choppy market)
-        is_choppy = (last_row['trendRegime'] == 'Ranging') and (last_row['directionRegime'] == 'Neutral')
+            # Calculate crossover angle for this candle
+            angle_lookback = min(3, abs(candle_idx) - 1)
+            if angle_lookback > 0:
+                fast_slope = (df['adaptiveEmaFast'].iloc[candle_idx] - df['adaptiveEmaFast'].iloc[candle_idx - angle_lookback]) / angle_lookback
+                slow_slope = (df['adaptiveEmaSlow'].iloc[candle_idx] - df['adaptiveEmaSlow'].iloc[candle_idx - angle_lookback]) / angle_lookback
+                slope_diff = (fast_slope - slow_slope) / candle['close']
+                crossover_angle = np.degrees(np.arctan(slope_diff * 100))
+            break  # Found a valid signal, stop searching
         
-        if (last_row['directionRegime'] == 'Bullish' or
-            not last_row['ema_separation_valid'] or
-            not last_row['price_confirms_short'] or
-            is_choppy):
-            pass  # Filter out
-        else:
+        # Check for SHORT signal
+        if candle['shortCondition']:
+            # Enhanced Regime Filter check for Short
+            is_choppy = (candle['trendRegime'] == 'Ranging') and (candle['directionRegime'] == 'Neutral')
+            
+            if (candle['directionRegime'] == 'Bullish' or
+                not candle['ema_separation_valid'] or
+                not candle['price_confirms_short'] or
+                is_choppy):
+                continue  # Skip this candle
+            
+            # Price Validation: Current price should NOT have gone below the sell candle's low
+            # (If it did, the signal may have already played out)
+            sell_candle_low = df['low'].iloc[candle_idx]
+            if current_price < sell_candle_low * 0.98:  # Allow 2% tolerance
+                continue  # Signal invalidated
+            
+            # Valid SHORT signal found
             signal = "SHORT"
+            
+            # Calculate crossover angle for this candle
+            angle_lookback = min(3, abs(candle_idx) - 1)
+            if angle_lookback > 0:
+                fast_slope = (df['adaptiveEmaFast'].iloc[candle_idx] - df['adaptiveEmaFast'].iloc[candle_idx - angle_lookback]) / angle_lookback
+                slow_slope = (df['adaptiveEmaSlow'].iloc[candle_idx] - df['adaptiveEmaSlow'].iloc[candle_idx - angle_lookback]) / angle_lookback
+                slope_diff = (fast_slope - slow_slope) / candle['close']
+                crossover_angle = np.degrees(np.arctan(slope_diff * 100))
+            break  # Found a valid signal, stop searching
             
     return signal, crossover_angle
 

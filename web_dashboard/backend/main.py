@@ -46,7 +46,7 @@ async def run_scanner(timeframes: List[str], symbol_limit: int):
     ]
     
     with open(LOG_FILE, "a") as log:
-        log.write(f"\n--- Starting Scan: {datetime.datetime.now()} ---\n")
+        log.write(f"\n🔄 SCAN IN PROGRESS - Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         log.write(f"Parameters: Symbols={symbol_limit}, Timeframes={tf_str}\n")
         log.flush()
         
@@ -58,9 +58,9 @@ async def run_scanner(timeframes: List[str], symbol_limit: int):
                 stderr=log
             )
             await process.wait()
-            log.write(f"--- Scan Completed: {datetime.datetime.now()} ---\n")
+            log.write(f"\n✅ SCAN COMPLETED - Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         except Exception as e:
-            log.write(f"--- ERROR: Scan failed with exception: {str(e)} ---\n")
+            log.write(f"\n❌ ERROR: Scan failed with exception: {str(e)}\n")
         finally:
             log.flush()
 

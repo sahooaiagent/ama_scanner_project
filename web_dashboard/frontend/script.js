@@ -82,11 +82,12 @@ async function init() {
     });
 
     clearLogsBtn.addEventListener('click', async () => {
+        // Clear display immediately
+        logOutput.innerHTML = '<div class="log-entry" style="color: var(--accent-blue)">Logs cleared.</div>';
+
+        // Also clear backend logs
         try {
-            const response = await fetch(`${API_URL}/clear-logs`, { method: 'POST' });
-            if (response.ok) {
-                logOutput.innerHTML = '<div class="log-entry" style="color: var(--accent-blue)">Logs cleared.</div>';
-            }
+            await fetch(`${API_URL}/clear-logs`, { method: 'POST' });
         } catch (error) {
             console.error('Error clearing logs:', error);
         }
@@ -193,7 +194,11 @@ async function runScan() {
 
     runBtn.disabled = true;
     const originalHtml = runBtn.innerHTML;
-    runBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Initializing...';
+    runBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning...';
+
+    // Add SCAN IN PROGRESS message
+    logOutput.innerHTML = '<div class="log-entry" style="color: var(--accent-blue); font-weight: bold; border-top: 2px solid var(--accent-blue); padding-top: 10px; margin-top: 10px;">🔄 SCAN IN PROGRESS...</div>';
+    logOutput.scrollTop = logOutput.scrollHeight;
 
     try {
         const response = await fetch(`${API_URL}/scan`, {
@@ -290,9 +295,21 @@ async function fetchLogs() {
             const processedLogs = data.logs.split('\n').map(line => {
                 if (!line.trim()) return '';
                 let style = '';
-                if (line.includes('SIGNAL FOUND')) style = 'color: var(--success); font-weight: bold;';
-                if (line.includes('ERROR') || line.includes('SyntaxError') || line.includes('failed')) style = 'color: var(--danger);';
-                if (line.includes('Starting Scan')) style = 'color: var(--accent-blue); border-top: 1px dotted var(--glass-border); padding-top: 5px; margin-top: 5px;';
+
+                // Highlight scan status messages
+                if (line.includes('SCAN COMPLETED')) {
+                    style = 'color: var(--success); font-weight: bold; border-bottom: 2px solid var(--success); padding-bottom: 10px; margin-bottom: 10px; font-size: 1.1rem;';
+                }
+                else if (line.includes('Starting') && (line.includes('Scan') || line.includes('scan'))) {
+                    style = 'color: var(--accent-blue); font-weight: bold; border-top: 2px solid var(--accent-blue); padding-top: 10px; margin-top: 10px;';
+                }
+                else if (line.includes('SIGNAL FOUND')) {
+                    style = 'color: var(--success); font-weight: bold;';
+                }
+                else if (line.includes('ERROR') || line.includes('SyntaxError') || line.includes('failed')) {
+                    style = 'color: var(--danger);';
+                }
+
                 return `<div class="log-entry" style="${style}">${line}</div>`;
             }).join('');
 
