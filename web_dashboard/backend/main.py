@@ -36,11 +36,12 @@ RESULTS_DIR = ".." # Results are saved as CSVs in the root by the scanner
 running_process = None
 
 class ScanRequest(BaseModel):
+    exchange: str = "binance"
     timeframes: List[str]
     symbol_limit: int
     schedule_time: Optional[str] = None # ISO format string
 
-async def run_scanner(timeframes: List[str], symbol_limit: int):
+async def run_scanner(exchange: str, timeframes: List[str], symbol_limit: int):
     """Executes the scanner script using asyncio."""
     global running_process
 
@@ -48,6 +49,7 @@ async def run_scanner(timeframes: List[str], symbol_limit: int):
     cmd = [
         "python3", "ama_pro_scanner.py",
         str(symbol_limit),
+        "--exchange", exchange,
         "--timeframes", tf_str
     ]
 
@@ -83,20 +85,20 @@ async def trigger_scan(request: ScanRequest, background_tasks: BackgroundTasks):
             run_at = datetime.datetime.fromisoformat(request.schedule_time)
             if run_at < datetime.datetime.now():
                 raise HTTPException(status_code=400, detail="Schedule time must be in the future")
-            
+
             job_id = f"scan_{int(run_at.timestamp())}"
             scheduler.add_job(
-                run_scanner, 
-                'date', 
-                run_date=run_at, 
-                args=[request.timeframes, request.symbol_limit],
+                run_scanner,
+                'date',
+                run_date=run_at,
+                args=[request.exchange, request.timeframes, request.symbol_limit],
                 id=job_id
             )
             return {"status": "scheduled", "job_id": job_id, "run_at": str(run_at)}
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format")
     else:
-        background_tasks.add_task(run_scanner, request.timeframes, request.symbol_limit)
+        background_tasks.add_task(run_scanner, request.exchange, request.timeframes, request.symbol_limit)
         return {"status": "started"}
 
 @app.get("/results")
@@ -148,14 +150,31 @@ async def get_config():
 async def get_status():
     jobs = []
     for job in scheduler.get_jobs():
+        # Extract job details from args
+        exchange = job.args[0] if len(job.args) > 0 else "unknown"
+        timeframes = job.args[1] if len(job.args) > 1 else []
+        symbol_limit = job.args[2] if len(job.args) > 2 else 0
+
         jobs.append({
             "id": job.id,
-            "next_run_time": str(job.next_run_time)
+            "next_run_time": str(job.next_run_time),
+            "exchange": exchange,
+            "timeframes": timeframes,
+            "symbol_limit": symbol_limit
         })
     return {
         "jobs": jobs,
         "scan_running": running_process is not None
     }
+
+@app.post("/cancel-job/{job_id}")
+async def cancel_job(job_id: str):
+    """Cancel a scheduled job."""
+    try:
+        scheduler.remove_job(job_id)
+        return {"status": "success", "message": f"Job {job_id} cancelled"}
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Job not found: {str(e)}")
 
 @app.post("/stop-scan")
 async def stop_scan():

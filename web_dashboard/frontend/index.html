@@ -58,6 +58,17 @@
                 <div class="config-columns">
                     <div class="config-left">
                         <div class="form-group">
+                            <label>Exchange</label>
+                            <div class="select-wrapper">
+                                <i class="fas fa-exchange-alt select-icon"></i>
+                                <select id="exchange-select">
+                                    <option value="binance" selected>Binance Futures</option>
+                                    <option value="mexc">MEXC Futures</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
                             <label>Timeperiods</label>
                             <div class="custom-multiselect" id="timeframe-dropdown">
                                 <div class="dropdown-header" id="selected-tags">
@@ -93,6 +104,46 @@
                     <button id="run-btn" class="primary-btn pulse-btn">
                         <i class="fas fa-play"></i> Run Scanner Now
                     </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stats Dashboard -->
+        <section class="stats-grid">
+            <div class="stat-card glass">
+                <div class="stat-icon" style="background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="stat-content">
+                    <h3 id="total-signals">0</h3>
+                    <p>Total Signals</p>
+                </div>
+            </div>
+            <div class="stat-card glass">
+                <div class="stat-icon" style="background: linear-gradient(135deg, var(--success), #00cc6a);">
+                    <i class="fas fa-arrow-up"></i>
+                </div>
+                <div class="stat-content">
+                    <h3 id="long-signals">0</h3>
+                    <p>Long Signals</p>
+                </div>
+            </div>
+            <div class="stat-card glass">
+                <div class="stat-icon" style="background: linear-gradient(135deg, var(--danger), #cc0044);">
+                    <i class="fas fa-arrow-down"></i>
+                </div>
+                <div class="stat-content">
+                    <h3 id="short-signals">0</h3>
+                    <p>Short Signals</p>
+                </div>
+            </div>
+            <div class="stat-card glass">
+                <div class="stat-icon" style="background: linear-gradient(135deg, var(--accent-orange), var(--accent-pink));">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <div class="stat-content">
+                    <h3 id="last-scan">Never</h3>
+                    <p>Last Scan</p>
                 </div>
             </div>
         </section>
@@ -156,6 +207,7 @@
                             <th class="sortable" data-sort="timestamp">
                                 Timestamp <i class="fas fa-sort sort-icon"></i>
                             </th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>

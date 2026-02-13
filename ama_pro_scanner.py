@@ -27,11 +27,11 @@ warnings.filterwarnings("ignore")
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
-EXCHANGE_ID = 'binance'
+EXCHANGE_ID = 'binance'  # Default, will be overridden by command line
 # SYMBOL_LIMIT will be set dynamically in main()
 MAX_WORKERS = 2     # Very safe parallelism to avoid IP bans
 TIMEFRAMES = ['15m', '30m', '1h', '2h', '4h', '1d']
-# Valid intervals in CCXT/Binance: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
+# Valid intervals in CCXT/Binance/MEXC: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
 
 # Gmail Configuration
 GMAIL_USER = 'sahooaiagent@gmail.com'
@@ -595,10 +595,21 @@ def scan_symbol(exchange, symbol):
 # -----------------------------------------------------------------------------
 
 def main():
-    global TIMEFRAMES
+    global TIMEFRAMES, EXCHANGE_ID
     start_time = time.time()
-    print("Starting AMA Pro Logic Scanner (MEXC Edition)...")
-    
+
+    # Handle dynamic parameters
+    import argparse
+    parser = argparse.ArgumentParser(add_help=False) # Don't conflict with positional args
+    parser.add_argument('--exchange', type=str, default='binance', help='Exchange to use (binance or mexc)')
+    parser.add_argument('--timeframes', type=str, help='Comma-separated timeframes')
+    args, unknown = parser.parse_known_args()
+
+    # Set exchange
+    EXCHANGE_ID = args.exchange.lower()
+    exchange_name = "Binance" if EXCHANGE_ID == "binance" else "MEXC"
+    print(f"Starting AMA Pro Logic Scanner ({exchange_name} Edition)...")
+
     # User Configuration: Number of symbols
     # Check if a limit was passed as a command line argument
     if len(sys.argv) > 1:
@@ -621,24 +632,25 @@ def main():
                 print("Invalid input or EOF. Using default: 100")
                 current_symbol_limit = 100
 
-    print(f"Timeframes: {TIMEFRAMES}")
-    print(f"Max Workers: {MAX_WORKERS}")
-    
-    # Handle dynamic timeframe selection
-    import argparse
-    parser = argparse.ArgumentParser(add_help=False) # Don't conflict with positional args
-    parser.add_argument('--timeframes', type=str, help='Comma-separated timeframes')
-    args, unknown = parser.parse_known_args()
-    
     if args.timeframes:
         TIMEFRAMES = [tf.strip() for tf in args.timeframes.split(',')]
         print(f"Overriding timeframes from CLI: {TIMEFRAMES}")
-    
-    # Initialize Exchange (Binance)
-    exchange = ccxt.binance({
-        'options': {'defaultType': 'future'},
-        'enableRateLimit': True
-    })
+
+    print(f"Exchange: {exchange_name}")
+    print(f"Timeframes: {TIMEFRAMES}")
+    print(f"Max Workers: {MAX_WORKERS}")
+
+    # Initialize Exchange
+    if EXCHANGE_ID == 'mexc':
+        exchange = ccxt.mexc({
+            'options': {'defaultType': 'swap'},  # MEXC uses 'swap' for futures
+            'enableRateLimit': True
+        })
+    else:  # binance
+        exchange = ccxt.binance({
+            'options': {'defaultType': 'future'},
+            'enableRateLimit': True
+        })
     
     # Get Top Symbols
     symbols = get_top_symbols(exchange, limit=current_symbol_limit)

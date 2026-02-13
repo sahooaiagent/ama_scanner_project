@@ -3,6 +3,7 @@ const API_URL = 'http://localhost:8000';
 const timeframeDropdown = document.getElementById('timeframe-dropdown');
 const selectedTags = document.getElementById('selected-tags');
 const timeframeOptions = document.getElementById('timeframe-options');
+const exchangeSelect = document.getElementById('exchange-select');
 const symbolLimit = document.getElementById('symbol-limit');
 const scheduleTime = document.getElementById('schedule-time');
 const runBtn = document.getElementById('run-btn');
@@ -209,6 +210,80 @@ function filterAndDisplayResults() {
 
     renderResults(filtered);
     updateResultsCount(filtered.length, allResults.length);
+    updateStats();
+}
+
+function updateStats() {
+    const totalSignals = allResults.length;
+    const longSignals = allResults.filter(r => r.Signal === 'LONG').length;
+    const shortSignals = allResults.filter(r => r.Signal === 'SHORT').length;
+
+    // Animated counter
+    animateValue('total-signals', 0, totalSignals, 1000);
+    animateValue('long-signals', 0, longSignals, 1000);
+    animateValue('short-signals', 0, shortSignals, 1000);
+
+    // Update last scan time
+    if (allResults.length > 0) {
+        const lastScan = allResults[allResults.length - 1].Timestamp;
+        if (lastScan) {
+            const scanDate = new Date(lastScan);
+            const now = new Date();
+            const diffMs = now - scanDate;
+            const diffMins = Math.floor(diffMs / 60000);
+
+            let timeAgo;
+            if (diffMins < 1) timeAgo = 'Just now';
+            else if (diffMins < 60) timeAgo = `${diffMins}m ago`;
+            else if (diffMins < 1440) timeAgo = `${Math.floor(diffMins / 60)}h ago`;
+            else timeAgo = `${Math.floor(diffMins / 1440)}d ago`;
+
+            document.getElementById('last-scan').textContent = timeAgo;
+        }
+    }
+}
+
+function animateValue(id, start, end, duration) {
+    const element = document.getElementById(id);
+    if (!element) return;
+
+    const range = end - start;
+    const increment = range / (duration / 16);
+    let current = start;
+
+    const timer = setInterval(() => {
+        current += increment;
+        if ((increment > 0 && current >= end) || (increment < 0 && current <= end)) {
+            current = end;
+            clearInterval(timer);
+        }
+        element.textContent = Math.floor(current);
+    }, 16);
+}
+
+function openTradingView(symbol, timeframe) {
+    // Remove /USDT or :USDT suffix and clean symbol
+    const cleanSymbol = symbol.replace(/\/USDT.*|:USDT.*/g, '');
+
+    // Map timeframes to TradingView format
+    const tvTimeframes = {
+        '15m': '15',
+        '30m': '30',
+        '1h': '60',
+        '2h': '120',
+        '4h': '240',
+        '12h': '720',
+        '1d': 'D',
+        '2d': '2D',
+        '1w': 'W',
+        '1M': 'M'
+    };
+
+    const tvTF = tvTimeframes[timeframe] || '60';
+    const url = `https://www.tradingview.com/chart/?symbol=BINANCE:${cleanSymbol}USDT&interval=${tvTF}`;
+
+    window.open(url, '_blank');
+    showToast(`Opening ${cleanSymbol} on TradingView`, 'info');
 }
 
 function updateResultsCount(filtered, total) {
@@ -224,7 +299,7 @@ function renderResults(results) {
     tbody.innerHTML = '';
 
     if (!results || results.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 40px; color: var(--text-secondary);">No signals detected yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 40px; color: var(--text-secondary);">No signals detected yet.</td></tr>';
         return;
     }
 
@@ -248,6 +323,11 @@ function renderResults(results) {
             <td>${res.Angle || 0}</td>
             <td class="${dailyChangeClass}">${dailyChange}</td>
             <td style="font-size: 0.8rem; color: var(--text-secondary)">${res.Timestamp || "N/A"}</td>
+            <td>
+                <button class="tradingview-btn" onclick="openTradingView('${res['Crypto Name']}', '${res.Timeperiod}')">
+                    <i class="fas fa-chart-bar"></i> Chart
+                </button>
+            </td>
         `;
         tbody.appendChild(row);
     });
@@ -283,6 +363,7 @@ window.removeTf = (e, tf) => {
 
 async function runScan() {
     const limit = symbolLimit.value;
+    const exchange = exchangeSelect.value;
     const timeframes = Array.from(selectedTFs).map(tf => tfMap[tf] || tf);
 
     if (timeframes.length === 0) {
@@ -294,7 +375,8 @@ async function runScan() {
     runBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning...';
 
     // Add SCAN IN PROGRESS message
-    logOutput.innerHTML = '<div class="log-entry" style="color: var(--accent-blue); font-weight: bold; border-top: 2px solid var(--accent-blue); padding-top: 10px; margin-top: 10px;">🔄 SCAN IN PROGRESS...</div>';
+    const exchangeName = exchange.toUpperCase();
+    logOutput.innerHTML = `<div class="log-entry" style="color: var(--accent-blue); font-weight: bold; border-top: 2px solid var(--accent-blue); padding-top: 10px; margin-top: 10px;">🔄 SCAN IN PROGRESS on ${exchangeName}...</div>`;
     logOutput.scrollTop = logOutput.scrollHeight;
 
     try {
@@ -302,6 +384,7 @@ async function runScan() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+                exchange,
                 timeframes,
                 symbol_limit: parseInt(limit)
             })
@@ -326,6 +409,7 @@ async function runScan() {
 async function scheduleScan() {
     const time = scheduleTime.value;
     const limit = symbolLimit.value;
+    const exchange = exchangeSelect.value;
     const timeframes = Array.from(selectedTFs).map(tf => tfMap[tf] || tf);
 
     if (!time) {
@@ -342,6 +426,7 @@ async function scheduleScan() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+                exchange,
                 timeframes,
                 symbol_limit: parseInt(limit),
                 schedule_time: new Date(time).toISOString()
@@ -371,17 +456,46 @@ async function fetchJobs() {
 }
 
 function renderJobs(jobs) {
-    jobsList.innerHTML = jobs.length === 0
-        ? '<div class="no-jobs">No upcoming scheduled tasks.</div>'
-        : jobs.map(job => `
+    if (jobs.length === 0) {
+        jobsList.innerHTML = '<div class="no-jobs">No upcoming scheduled tasks.</div>';
+        return;
+    }
+
+    jobsList.innerHTML = jobs.map(job => {
+        const scheduledDate = new Date(job.next_run_time);
+        const exchange = (job.exchange || 'binance').toUpperCase();
+        const tfList = job.timeframes ? job.timeframes.join(', ') : 'N/A';
+
+        return `
             <div class="job-item glass">
                 <div class="job-info">
-                    <h4><i class="fas fa-clock"></i> Next Scan</h4>
-                    <p>${new Date(job.next_run_time).toLocaleString()}</p>
+                    <h4><i class="fas fa-clock"></i> Scheduled Scan</h4>
+                    <p><strong>Time:</strong> ${scheduledDate.toLocaleString()}</p>
+                    <p><strong>Exchange:</strong> ${exchange}</p>
+                    <p><strong>Symbols:</strong> ${job.symbol_limit || 'N/A'}</p>
+                    <p><strong>Timeframes:</strong> ${tfList}</p>
                 </div>
-                <button class="cancel-btn">Cancel</button>
+                <button class="cancel-btn" onclick="cancelJob('${job.id}')">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
             </div>
-        `).join('');
+        `;
+    }).join('');
+}
+
+async function cancelJob(jobId) {
+    try {
+        const response = await fetch(`${API_URL}/cancel-job/${jobId}`, { method: 'POST' });
+        if (response.ok) {
+            showToast('Scheduled scan cancelled', 'success');
+            fetchJobs();
+        } else {
+            showToast('Failed to cancel scan', 'error');
+        }
+    } catch (error) {
+        console.error('Error cancelling job:', error);
+        showToast('Error cancelling scan', 'error');
+    }
 }
 
 function sortResults(column) {
