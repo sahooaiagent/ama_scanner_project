@@ -381,7 +381,7 @@ def apply_ama_pro_logic(df):
             # Price Validation: Current price should NOT have gone above the buy candle's high
             # (If it did, the signal may have already played out)
             buy_candle_high = df['high'].iloc[candle_idx]
-            if current_price > buy_candle_high * 1.02:  # Allow 2% tolerance
+            if current_price > buy_candle_high:  # Strict 0% tolerance
                 continue  # Signal invalidated
             
             # Valid LONG signal found
@@ -410,7 +410,7 @@ def apply_ama_pro_logic(df):
             # Price Validation: Current price should NOT have gone below the sell candle's low
             # (If it did, the signal may have already played out)
             sell_candle_low = df['low'].iloc[candle_idx]
-            if current_price < sell_candle_low * 0.98:  # Allow 2% tolerance
+            if current_price < sell_candle_low:  # Strict 0% tolerance
                 continue  # Signal invalidated
             
             # Valid SHORT signal found
