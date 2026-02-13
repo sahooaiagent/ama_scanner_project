@@ -521,6 +521,17 @@ def main():
     print(f"Timeframes: {TIMEFRAMES}")
     print(f"Max Workers: {MAX_WORKERS}")
     
+    # Handle dynamic timeframe selection
+    import argparse
+    parser = argparse.ArgumentParser(add_help=False) # Don't conflict with positional args
+    parser.add_argument('--timeframes', type=str, help='Comma-separated timeframes')
+    args, unknown = parser.parse_known_args()
+    
+    global TIMEFRAMES
+    if args.timeframes:
+        TIMEFRAMES = [tf.strip() for tf in args.timeframes.split(',')]
+        print(f"Overriding timeframes from CLI: {TIMEFRAMES}")
+    
     # Initialize Exchange (Binance)
     exchange = ccxt.binance({
         'options': {'defaultType': 'future'},
