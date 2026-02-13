@@ -343,9 +343,20 @@ def apply_ama_pro_logic(df):
     # Since we are scanning for *current* alerts, we check if the LAST CLOSED CANDLE triggered a signal.
     
     last_row = df.iloc[-2]
-    last_idx = df.index[-2]
     
     signal = None
+    crossover_angle = None
+    
+    if last_row['longCondition'] or last_row['shortCondition']:
+        # Calculate slopes over last 3 candles for smoother angle
+        lookback = min(3, len(df) - 2)
+        fast_slope = (df['adaptiveEmaFast'].iloc[-2] - df['adaptiveEmaFast'].iloc[-2-lookback]) / lookback
+        slow_slope = (df['adaptiveEmaSlow'].iloc[-2] - df['adaptiveEmaSlow'].iloc[-2-lookback]) / lookback
+        
+        # Angle between the two EMAs (in degrees)
+        # Using arctangent of the slope difference normalized by price
+        slope_diff = (fast_slope - slow_slope) / last_row['close']
+        crossover_angle = np.degrees(np.arctan(slope_diff * 100))  # Scale for visibility
     
     if last_row['longCondition']:
         # Enhanced Regime Filter check for Long
@@ -381,7 +392,7 @@ def apply_ama_pro_logic(df):
         else:
             signal = "SHORT"
             
-    return signal
+    return signal, crossover_angle
 
 # -----------------------------------------------------------------------------
 # Notification Logic
@@ -400,10 +411,10 @@ def send_gmail_notification(signals):
     if signals:
         subject = f"AMA Pro Scanner Alert: {len(signals)} Signals Found"
         body_text = f"AMA Pro Scanner detected the following {len(signals)} signals:\n\n"
-        body_text += f"{'Crypto Name':<15} | {'Timeperiod':<10} | {'Signal':<10} | {'Timestamp'}\n"
-        body_text += "-" * 70 + "\n"
+        body_text += f"{'Crypto Name':<15} | {'Timeperiod':<10} | {'Signal':<10} | {'Angle':<10} | {'Timestamp'}\n"
+        body_text += "-" * 85 + "\n"
         for s in signals:
-            body_text += f"{s['Crypto Name']:<15} | {s['Timeperiod']:<10} | {s['Signal']:<10} | {s['Timestamp']}\n"
+            body_text += f"{s['Crypto Name']:<15} | {s['Timeperiod']:<10} | {s['Signal']:<10} | {s['Angle']:<10} | {s['Timestamp']}\n"
     else:
         subject = "AMA Pro Scanner: Daily Status (No Signals)"
         body_text = "AMA Pro Scanner completed its daily run. No signals were detected matching your criteria.\n"
@@ -459,14 +470,17 @@ def scan_symbol(exchange, symbol):
                 df = fetch_ohlcv(exchange, symbol, tf, limit=300)
             
             if df is not None and not df.empty:
-                signal = apply_ama_pro_logic(df)
-                if signal:
-                    found_signals.append({
-                        'Crypto Name': symbol,
-                        'Timeperiod': tf,
-                        'Signal': signal,
-                        'Timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    })
+                result = apply_ama_pro_logic(df)
+                if result:
+                    signal, angle = result
+                    if signal:
+                        found_signals.append({
+                            'Crypto Name': symbol,
+                            'Timeperiod': tf,
+                            'Signal': signal,
+                            'Angle': f"{angle:.2f}°" if angle is not None else "N/A",
+                            'Timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        })
         except Exception:
             pass
             
