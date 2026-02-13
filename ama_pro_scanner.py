@@ -532,6 +532,7 @@ def scan_symbol(exchange, symbol):
 # -----------------------------------------------------------------------------
 
 def main():
+    global TIMEFRAMES
     start_time = time.time()
     print("Starting AMA Pro Logic Scanner (MEXC Edition)...")
     
