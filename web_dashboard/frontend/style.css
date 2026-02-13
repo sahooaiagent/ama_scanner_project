@@ -155,10 +155,20 @@ header {
 }
 
 .controls-grid {
+    display: block;
+    /* No longer a grid of cards */
+    margin-bottom: 2rem;
+}
+
+.config-card {
+    padding: 2rem !important;
+}
+
+.config-columns {
     display: grid;
-    grid-template-columns: 1fr 1.5fr;
-    gap: 30px;
-    margin-bottom: 30px;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    margin-bottom: 2rem;
 }
 
 .form-group {
@@ -168,12 +178,10 @@ header {
 .form-group label {
     display: block;
     margin-bottom: 12px;
-    font-size: 0.9rem;
-    color: var(--text-secondary);
-    font-weight: 400;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    color: var(--text-primary);
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
 }
 
 /* Custom Multiselect Dropdown */
@@ -378,6 +386,11 @@ button {
 
 .secondary-btn:hover {
     background: rgba(255, 255, 255, 0.1);
+}
+
+.log-card-bottom {
+    margin-top: 2rem;
+    padding: 2rem;
 }
 
 .log-container {

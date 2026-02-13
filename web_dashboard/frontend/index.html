@@ -30,55 +30,54 @@
         </header>
 
         <section class="controls-grid">
-            <div class="card glass">
+            <div class="card glass config-card">
                 <h2><i class="fas fa-sliders-h"></i> Scan Configuration</h2>
 
-                <div class="form-group">
-                    <label>Timeperiods</label>
-                    <div class="custom-multiselect" id="timeframe-dropdown">
-                        <div class="dropdown-header" id="selected-tags">
-                            <span class="placeholder">Select timeframes...</span>
-                        </div>
-                        <div class="dropdown-options glass" id="timeframe-options">
-                            <!-- Options injected by JS -->
+                <div class="config-columns">
+                    <div class="config-left">
+                        <div class="form-group">
+                            <label>Timeperiods</label>
+                            <div class="custom-multiselect" id="timeframe-dropdown">
+                                <div class="dropdown-header" id="selected-tags">
+                                    <span class="placeholder">Select timeframes...</span>
+                                </div>
+                                <div class="dropdown-options glass" id="timeframe-options">
+                                    <!-- Options injected by JS -->
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="form-group">
-                    <label>Number of Cryptos</label>
-                    <div class="select-wrapper">
-                        <i class="fas fa-coins select-icon"></i>
-                        <select id="symbol-limit">
-                            <option value="20">20</option>
-                            <option value="50">50</option>
-                            <option value="100" selected>100</option>
-                            <option value="200">200</option>
-                            <option value="300">300</option>
-                            <option value="400">400</option>
-                            <option value="500">500</option>
-                        </select>
-                    </div>
-                </div>
+                    <div class="config-right">
+                        <div class="form-group">
+                            <label>Number of Cryptos</label>
+                            <div class="select-wrapper">
+                                <i class="fas fa-coins select-icon"></i>
+                                <select id="symbol-limit">
+                                    <option value="20">20</option>
+                                    <option value="50">50</option>
+                                    <option value="100" selected>100</option>
+                                    <option value="200">200</option>
+                                    <option value="300">300</option>
+                                    <option value="400">400</option>
+                                    <option value="500">500</option>
+                                </select>
+                            </div>
+                        </div>
 
-                <div class="form-group">
-                    <label><i class="far fa-calendar-alt"></i> Schedule Run</label>
-                    <div class="input-with-icon">
-                        <i class="far fa-clock"></i>
-                        <input type="datetime-local" id="schedule-time">
+                        <div class="form-group">
+                            <label><i class="far fa-calendar-alt"></i> Schedule Run</label>
+                            <div class="input-with-icon">
+                                <i class="far fa-clock"></i>
+                                <input type="datetime-local" id="schedule-time">
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 <div class="button-group">
                     <button id="run-btn" class="primary-btn">Run Scanner Now</button>
                     <button id="schedule-btn" class="secondary-btn">Schedule Run</button>
-                </div>
-            </div>
-
-            <div class="card glass log-card">
-                <h2>Live Run Diagnostics</h2>
-                <div class="log-container" id="log-output">
-                    <div class="log-entry">Waiting for scan to start...</div>
                 </div>
             </div>
         </section>
@@ -110,6 +109,13 @@
             <h2>Scheduled Tasks</h2>
             <div id="jobs-list" class="jobs-grid">
                 <!-- Scheduled jobs injected here -->
+            </div>
+        </section>
+
+        <section class="card glass log-card-bottom">
+            <h2><i class="fas fa-terminal"></i> Live Run Diagnostics</h2>
+            <div class="log-container" id="log-output">
+                <div class="log-entry">Waiting for scan to start...</div>
             </div>
         </section>
     </main>
