@@ -40,10 +40,17 @@ RECEIVER_EMAIL = 'sahooaiagent@gmail.com'
 CCXT_TIMEFRAMES = {
     '15m': '15m',
     '30m': '30m',
+    '45m': '15m', # Resample from 15m
     '1h': '1h',
-    '2h': '2h',
+    '2h': '1h',   # Resample from 1h
+    '3h': '1h',   # Resample from 1h
     '4h': '4h',
-    '1d': '1d'
+    '5h': '1h',   # Resample from 1h
+    '12h': '4h',  # Resample from 4h
+    '1d': '1d',
+    '2d': '1d',   # Resample from 1d
+    '1w': '1w',
+    '1M': '1M'
 }
 
 # -----------------------------------------------------------------------------
@@ -153,6 +160,14 @@ def fetch_ohlcv(exchange, symbol, timeframe, limit=300):
                 df = df.resample('3h').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'})
             elif timeframe == '5h':
                 df = df.resample('5h').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'})
+            elif timeframe == '45m':
+                df = df.resample('45min').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'})
+            elif timeframe == '2h':
+                df = df.resample('2h').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'})
+            elif timeframe == '12h':
+                df = df.resample('12h').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'})
+            elif timeframe == '2d':
+                df = df.resample('2d').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'})
                 
             return df.dropna()
         except Exception as e:
@@ -446,27 +461,51 @@ def scan_symbol(exchange, symbol):
     """Worker function to scan a single symbol across all timeframes."""
     found_signals = []
     
-    # Optimization: Fetch sources to resample if needed
+    # Fetch sources to resample if needed
     h1_df_source = None
+    h4_df_source = None
+    d1_df_source = None
+    m15_df_source = None
+    
     try:
-        # Use 1h for 1h and 2h
-        h1_df_source = fetch_ohlcv(exchange, symbol, '1h', limit=1000)
+        # Optimization: Fetch base timeframes for resampling
+        for tf in TIMEFRAMES:
+            if tf in ['1h', '2h', '3h', '5h'] and h1_df_source is None:
+                h1_df_source = fetch_ohlcv(exchange, symbol, '1h', limit=1000)
+            if tf in ['12h'] and h4_df_source is None:
+                h4_df_source = fetch_ohlcv(exchange, symbol, '4h', limit=1000)
+            if tf in ['2d'] and d1_df_source is None:
+                d1_df_source = fetch_ohlcv(exchange, symbol, '1d', limit=500)
+            if tf in ['45m'] and m15_df_source is None:
+                m15_df_source = fetch_ohlcv(exchange, symbol, '15m', limit=1000)
     except Exception:
         pass
 
     for tf in TIMEFRAMES:
         try:
             df = None
-            # Resample timeframes from 1h source
-            if tf in ['1h', '2h'] and h1_df_source is not None:
+            # Resample timeframes from sources
+            if tf in ['1h', '2h', '3h', '5h'] and h1_df_source is not None:
                 if tf == '1h':
                     df = h1_df_source.tail(300)
                 else:
                     df = h1_df_source.resample(tf).agg({
                         'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
                     }).dropna().tail(300)
+            elif tf == '12h' and h4_df_source is not None:
+                df = h4_df_source.resample('12h').agg({
+                    'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+                }).dropna().tail(300)
+            elif tf == '2d' and d1_df_source is not None:
+                df = d1_df_source.resample('2d').agg({
+                    'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+                }).dropna().tail(300)
+            elif tf == '45m' and m15_df_source is not None:
+                df = m15_df_source.resample('45min').agg({
+                    'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+                }).dropna().tail(300)
             else:
-                # Fetch directly for 15m, 30m, 4h, 1d
+                # Fetch directly for 15m, 30m, 4h, 1d, 1w, 1M
                 df = fetch_ohlcv(exchange, symbol, tf, limit=300)
             
             if df is not None and not df.empty:

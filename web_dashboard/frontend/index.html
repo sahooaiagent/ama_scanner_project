@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,13 +9,15 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
+
 <body>
     <div class="background">
         <div class="blur-circle circle-1"></div>
         <div class="blur-circle circle-2"></div>
     </div>
-    
+
     <main class="dashboard-container">
         <header>
             <div class="logo">
@@ -28,18 +31,24 @@
 
         <section class="controls-grid">
             <div class="card glass">
-                <h2>Scan Configuration</h2>
-                
+                <h2><i class="fas fa-sliders-h"></i> Scan Configuration</h2>
+
                 <div class="form-group">
                     <label>Timeperiods</label>
-                    <div class="checkbox-grid" id="timeframe-selection">
-                        <!-- Dynamic checkboxes -->
+                    <div class="custom-multiselect" id="timeframe-dropdown">
+                        <div class="dropdown-header" id="selected-tags">
+                            <span class="placeholder">Select timeframes...</span>
+                        </div>
+                        <div class="dropdown-options glass" id="timeframe-options">
+                            <!-- Options injected by JS -->
+                        </div>
                     </div>
                 </div>
 
                 <div class="form-group">
                     <label>Number of Cryptos</label>
                     <div class="select-wrapper">
+                        <i class="fas fa-coins select-icon"></i>
                         <select id="symbol-limit">
                             <option value="20">20</option>
                             <option value="50">50</option>
@@ -53,8 +62,11 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Schedule (Optional)</label>
-                    <input type="datetime-local" id="schedule-time">
+                    <label><i class="far fa-calendar-alt"></i> Schedule Run</label>
+                    <div class="input-with-icon">
+                        <i class="far fa-clock"></i>
+                        <input type="datetime-local" id="schedule-time">
+                    </div>
                 </div>
 
                 <div class="button-group">
@@ -93,7 +105,7 @@
                 </table>
             </div>
         </section>
-        
+
         <section class="scheduled-jobs card glass">
             <h2>Scheduled Tasks</h2>
             <div id="jobs-list" class="jobs-grid">
@@ -104,4 +116,5 @@
 
     <script src="script.js"></script>
 </body>
+
 </html>

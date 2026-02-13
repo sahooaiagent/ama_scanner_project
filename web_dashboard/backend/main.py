@@ -110,7 +110,7 @@ async def get_logs():
 @app.get("/config")
 async def get_config():
     return {
-        "available_timeframes": ["15m", "30m", "1h", "2h", "4h", "12h", "1d", "2d", "1w", "1M"],
+        "available_timeframes": ["15m", "30m", "45m", "1h", "2h", "4h", "12h", "1d", "2d", "1w", "1M"],
         "available_symbol_limits": [20, 50, 100, 200, 300, 400, 500]
     }
 

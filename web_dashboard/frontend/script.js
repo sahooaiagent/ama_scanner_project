@@ -1,6 +1,8 @@
 const API_URL = 'http://localhost:8000';
 
-const timeframeSelection = document.getElementById('timeframe-selection');
+const timeframeDropdown = document.getElementById('timeframe-dropdown');
+const selectedTags = document.getElementById('selected-tags');
+const timeframeOptions = document.getElementById('timeframe-options');
 const symbolLimit = document.getElementById('symbol-limit');
 const scheduleTime = document.getElementById('schedule-time');
 const runBtn = document.getElementById('run-btn');
@@ -11,29 +13,78 @@ const jobsList = document.getElementById('jobs-list');
 const refreshResults = document.getElementById('refresh-results');
 
 let logInterval = null;
+let allTimeframes = [];
+let selectedTFs = new Set(['1h', '4h']);
 
 async function init() {
     await fetchConfig();
     await fetchResults();
     await fetchJobs();
     startLogPolling();
+
+    // Dropdown toggling
+    document.addEventListener('click', (e) => {
+        if (!timeframeDropdown.contains(e.target)) {
+            timeframeOptions.classList.remove('active');
+        }
+    });
+
+    selectedTags.addEventListener('click', () => {
+        timeframeOptions.classList.toggle('active');
+    });
 }
 
 async function fetchConfig() {
     try {
         const response = await fetch(`${API_URL}/config`);
         const data = await response.json();
-
-        timeframeSelection.innerHTML = data.available_timeframes.map(tf => `
-            <div>
-                <input type="checkbox" id="tf-${tf}" name="timeframe" value="${tf}" class="tf-checkbox" ${['1h', '2h', '4h'].includes(tf) ? 'checked' : ''}>
-                <label for="tf-${tf}" class="tf-label">${tf}</label>
-            </div>
-        `).join('');
+        allTimeframes = data.available_timeframes;
+        renderOptions();
+        renderTags();
     } catch (error) {
         console.error('Error fetching config:', error);
     }
 }
+
+function renderOptions() {
+    timeframeOptions.innerHTML = allTimeframes.map(tf => `
+        <div class="option ${selectedTFs.has(tf) ? 'selected' : ''}" data-value="${tf}">
+            ${tf}
+        </div>
+    `).join('');
+
+    document.querySelectorAll('.option').forEach(opt => {
+        opt.addEventListener('click', () => {
+            const val = opt.getAttribute('data-value');
+            if (selectedTFs.has(val)) {
+                selectedTFs.delete(val);
+            } else {
+                selectedTFs.add(val);
+            }
+            renderOptions();
+            renderTags();
+        });
+    });
+}
+
+function renderTags() {
+    if (selectedTFs.size === 0) {
+        selectedTags.innerHTML = '<span class="placeholder">Select timeframes...</span>';
+    } else {
+        selectedTags.innerHTML = Array.from(selectedTFs).map(tf => `
+            <div class="tag">
+                ${tf} <i class="fas fa-times" onclick="removeTag(event, '${tf}')"></i>
+            </div>
+        `).join('');
+    }
+}
+
+window.removeTag = (e, tf) => {
+    e.stopPropagation();
+    selectedTFs.delete(tf);
+    renderOptions();
+    renderTags();
+};
 
 async function fetchResults() {
     try {
@@ -93,12 +144,8 @@ function startLogPolling() {
     logInterval = setInterval(fetchLogs, 2000);
 }
 
-function getSelectedTimeframes() {
-    return Array.from(document.querySelectorAll('input[name="timeframe"]:checked')).map(cb => cb.value);
-}
-
 async function triggerAction(isSchedule = false) {
-    const timeframes = getSelectedTimeframes();
+    const timeframes = Array.from(selectedTFs);
     if (timeframes.length === 0) {
         alert('Please select at least one timeframe.');
         return;
