@@ -3,6 +3,7 @@ import subprocess
 import datetime
 import json
 import asyncio
+import signal
 from typing import List, Optional
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,6 +32,9 @@ scheduler = AsyncIOScheduler(jobstores=jobstores)
 LOG_FILE = "../scanner_run.log"
 RESULTS_DIR = ".." # Results are saved as CSVs in the root by the scanner
 
+# Track running processes
+running_process = None
+
 class ScanRequest(BaseModel):
     timeframes: List[str]
     symbol_limit: int
@@ -38,18 +42,20 @@ class ScanRequest(BaseModel):
 
 async def run_scanner(timeframes: List[str], symbol_limit: int):
     """Executes the scanner script using asyncio."""
+    global running_process
+
     tf_str = ",".join(timeframes)
     cmd = [
-        "python3", "ama_pro_scanner.py", 
-        str(symbol_limit), 
+        "python3", "ama_pro_scanner.py",
+        str(symbol_limit),
         "--timeframes", tf_str
     ]
-    
+
     with open(LOG_FILE, "a") as log:
         log.write(f"\n🔄 SCAN IN PROGRESS - Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         log.write(f"Parameters: Symbols={symbol_limit}, Timeframes={tf_str}\n")
         log.flush()
-        
+
         try:
             # Use asyncio.create_subprocess_exec for non-blocking execution
             process = await asyncio.create_subprocess_exec(
@@ -57,11 +63,13 @@ async def run_scanner(timeframes: List[str], symbol_limit: int):
                 stdout=log,
                 stderr=log
             )
+            running_process = process
             await process.wait()
             log.write(f"\n✅ SCAN COMPLETED - Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         except Exception as e:
             log.write(f"\n❌ ERROR: Scan failed with exception: {str(e)}\n")
         finally:
+            running_process = None
             log.flush()
 
 @app.on_event("startup")
@@ -144,7 +152,31 @@ async def get_status():
             "id": job.id,
             "next_run_time": str(job.next_run_time)
         })
-    return {"jobs": jobs}
+    return {
+        "jobs": jobs,
+        "scan_running": running_process is not None
+    }
+
+@app.post("/stop-scan")
+async def stop_scan():
+    """Stops the currently running scan."""
+    global running_process
+    if running_process is None:
+        raise HTTPException(status_code=404, detail="No scan is currently running")
+
+    try:
+        running_process.terminate()
+        await asyncio.sleep(1)
+        if running_process.returncode is None:
+            running_process.kill()
+
+        with open(LOG_FILE, "a") as log:
+            log.write(f"\n⚠️ SCAN STOPPED - User requested stop at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+
+        running_process = None
+        return {"status": "stopped", "message": "Scan stopped successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to stop scan: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

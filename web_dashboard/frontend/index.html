@@ -100,19 +100,62 @@
         <!-- Results Section -->
         <section class="results-card card glass">
             <div class="card-header">
-                <h2>Latest Signals Detected</h2>
-                <button id="refresh-results" class="icon-btn">↻ Refresh</button>
+                <h2><i class="fas fa-chart-line"></i> Latest Signals Detected</h2>
+                <div class="header-actions">
+                    <button id="refresh-results" class="icon-btn">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                    <button id="export-csv" class="icon-btn success-btn">
+                        <i class="fas fa-download"></i> Export CSV
+                    </button>
+                </div>
             </div>
+
+            <!-- Filters and Search -->
+            <div class="filters-section">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="search-input" placeholder="Search by symbol...">
+                </div>
+                <div class="filter-group">
+                    <select id="signal-filter" class="filter-select">
+                        <option value="all">All Signals</option>
+                        <option value="LONG">LONG Only</option>
+                        <option value="SHORT">SHORT Only</option>
+                    </select>
+                    <select id="timeframe-filter" class="filter-select">
+                        <option value="all">All Timeframes</option>
+                        <option value="15m">15m</option>
+                        <option value="30m">30m</option>
+                        <option value="1h">1h</option>
+                        <option value="4h">4h</option>
+                        <option value="1d">1d</option>
+                    </select>
+                </div>
+            </div>
+
             <div class="table-container">
                 <table id="results-table">
                     <thead>
                         <tr>
-                            <th>Symbol</th>
-                            <th>Timeframe</th>
-                            <th>Signal</th>
-                            <th>Angle</th>
-                            <th>Daily Change</th>
-                            <th>Timestamp</th>
+                            <th class="sortable" data-sort="symbol">
+                                Symbol <i class="fas fa-sort sort-icon"></i>
+                            </th>
+                            <th class="sortable" data-sort="timeframe">
+                                Timeframe <i class="fas fa-sort sort-icon"></i>
+                            </th>
+                            <th class="sortable" data-sort="signal">
+                                Signal <i class="fas fa-sort sort-icon"></i>
+                            </th>
+                            <th class="sortable" data-sort="angle">
+                                Angle <i class="fas fa-sort sort-icon"></i>
+                            </th>
+                            <th class="sortable" data-sort="change">
+                                Daily Change <i class="fas fa-sort sort-icon"></i>
+                            </th>
+                            <th class="sortable" data-sort="timestamp">
+                                Timestamp <i class="fas fa-sort sort-icon"></i>
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
@@ -120,6 +163,7 @@
                     </tbody>
                 </table>
             </div>
+            <div class="results-count" id="results-count"></div>
         </section>
 
         <!-- Schedule Section -->
@@ -159,6 +203,9 @@
             </div>
         </section>
     </main>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container"></div>
 
     <script src="script.js"></script>
 </body>

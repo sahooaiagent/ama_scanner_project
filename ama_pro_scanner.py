@@ -5,6 +5,7 @@ import time
 import datetime
 import warnings
 import sys
+import glob as file_glob
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import smtplib
 import ssl
@@ -355,38 +356,42 @@ def apply_ama_pro_logic(df):
     # --- Filtering (Last 5 Candles) ---
     # Check if BUY/SELL signals appeared in the last 5 candles
     # and validate that price hasn't invalidated the signal
-    
+
     signal = None
     crossover_angle = None
-    
+
     # Look back at the last 5 closed candles (excluding current incomplete candle)
     lookback_candles = min(5, len(df) - 1)
-    
+
     for i in range(2, lookback_candles + 2):  # Check candles -2 to -6
         candle_idx = -i
         candle = df.iloc[candle_idx]
-        current_price = df['close'].iloc[-1]  # Current (most recent) price
-        
+
         # Check for LONG signal
         if candle['longCondition']:
             # Enhanced Regime Filter check for Long
             is_choppy = (candle['trendRegime'] == 'Ranging') and (candle['directionRegime'] == 'Neutral')
-            
+
             if (candle['directionRegime'] == 'Bearish' or
                 not candle['ema_separation_valid'] or
                 not candle['price_confirms_long'] or
                 is_choppy):
                 continue  # Skip this candle
-            
-            # Price Validation: Current price should NOT have gone above the buy candle's high
-            # (If it did, the signal may have already played out)
+
+            # Price Validation: Check if ANY candle after the signal has crossed above the buy candle's high
+            # Get all candles from the signal candle to the most recent candle
             buy_candle_high = df['high'].iloc[candle_idx]
-            if current_price > buy_candle_high:  # Strict 0% tolerance
-                continue  # Signal invalidated
-            
+            candles_after_signal = df.iloc[candle_idx:]
+
+            # Check if the highest high after (and including) the signal candle has exceeded the signal candle's high
+            max_high_after = candles_after_signal['high'].iloc[1:].max() if len(candles_after_signal) > 1 else 0
+
+            if max_high_after > buy_candle_high:  # Price has crossed above, signal invalidated
+                continue
+
             # Valid LONG signal found
             signal = "LONG"
-            
+
             # Calculate crossover angle for this candle
             angle_lookback = min(3, abs(candle_idx) - 1)
             if angle_lookback > 0:
@@ -395,27 +400,32 @@ def apply_ama_pro_logic(df):
                 slope_diff = (fast_slope - slow_slope) / candle['close']
                 crossover_angle = np.degrees(np.arctan(slope_diff * 100))
             break  # Found a valid signal, stop searching
-        
+
         # Check for SHORT signal
         if candle['shortCondition']:
             # Enhanced Regime Filter check for Short
             is_choppy = (candle['trendRegime'] == 'Ranging') and (candle['directionRegime'] == 'Neutral')
-            
+
             if (candle['directionRegime'] == 'Bullish' or
                 not candle['ema_separation_valid'] or
                 not candle['price_confirms_short'] or
                 is_choppy):
                 continue  # Skip this candle
-            
-            # Price Validation: Current price should NOT have gone below the sell candle's low
-            # (If it did, the signal may have already played out)
+
+            # Price Validation: Check if ANY candle after the signal has crossed below the sell candle's low
+            # Get all candles from the signal candle to the most recent candle
             sell_candle_low = df['low'].iloc[candle_idx]
-            if current_price < sell_candle_low:  # Strict 0% tolerance
-                continue  # Signal invalidated
-            
+            candles_after_signal = df.iloc[candle_idx:]
+
+            # Check if the lowest low after (and including) the signal candle has gone below the signal candle's low
+            min_low_after = candles_after_signal['low'].iloc[1:].min() if len(candles_after_signal) > 1 else float('inf')
+
+            if min_low_after < sell_candle_low:  # Price has crossed below, signal invalidated
+                continue
+
             # Valid SHORT signal found
             signal = "SHORT"
-            
+
             # Calculate crossover angle for this candle
             angle_lookback = min(3, abs(candle_idx) - 1)
             if angle_lookback > 0:
@@ -424,7 +434,7 @@ def apply_ama_pro_logic(df):
                 slope_diff = (fast_slope - slow_slope) / candle['close']
                 crossover_angle = np.degrees(np.arctan(slope_diff * 100))
             break  # Found a valid signal, stop searching
-            
+
     return signal, crossover_angle
 
 # -----------------------------------------------------------------------------
@@ -472,37 +482,60 @@ def send_gmail_notification(signals):
         print(f"Failed to send email: {e}")
 
 # -----------------------------------------------------------------------------
+# Cleanup Functions
+# -----------------------------------------------------------------------------
+
+def cleanup_old_results(keep_last=10):
+    """Remove old CSV result files, keeping only the most recent ones."""
+    try:
+        csv_files = file_glob.glob("ama_pro_scan_results_*.csv")
+        if len(csv_files) > keep_last:
+            # Sort by modification time
+            csv_files.sort(key=os.path.getmtime, reverse=True)
+            # Remove older files
+            for old_file in csv_files[keep_last:]:
+                os.remove(old_file)
+                print(f"🗑️  Cleaned up old result file: {old_file}")
+    except Exception as e:
+        print(f"Warning: Could not cleanup old files: {e}")
+
+# -----------------------------------------------------------------------------
 # Worker Function
 # -----------------------------------------------------------------------------
 
 def scan_symbol(exchange, symbol):
     """Worker function to scan a single symbol across all timeframes."""
     found_signals = []
-    
+
     # Fetch sources to resample if needed
     h1_df_source = None
     h4_df_source = None
     d1_df_source = None
     m15_df_source = None
-    
+
     try:
-        # Optimization: Fetch base timeframes for resampling
-        for tf in TIMEFRAMES:
-            if tf in ['1h', '2h', '3h', '5h'] and h1_df_source is None:
-                h1_df_source = fetch_ohlcv(exchange, symbol, '1h', limit=1000)
-            if tf in ['12h'] and h4_df_source is None:
-                h4_df_source = fetch_ohlcv(exchange, symbol, '4h', limit=1000)
-            if tf in ['2d'] and d1_df_source is None:
-                d1_df_source = fetch_ohlcv(exchange, symbol, '1d', limit=500)
-            if tf in ['45m'] and m15_df_source is None:
-                m15_df_source = fetch_ohlcv(exchange, symbol, '15m', limit=1000)
+        # Optimization: Fetch base timeframes for resampling (pre-check which ones we need)
+        needs_h1 = any(tf in ['1h', '2h', '3h', '5h'] for tf in TIMEFRAMES)
+        needs_h4 = any(tf in ['12h'] for tf in TIMEFRAMES)
+        needs_d1 = any(tf in ['1d', '2d'] for tf in TIMEFRAMES)
+        needs_m15 = any(tf in ['45m'] for tf in TIMEFRAMES)
+
+        if needs_h1:
+            h1_df_source = fetch_ohlcv(exchange, symbol, '1h', limit=1000)
+        if needs_h4:
+            h4_df_source = fetch_ohlcv(exchange, symbol, '4h', limit=1000)
+        if needs_d1:
+            d1_df_source = fetch_ohlcv(exchange, symbol, '1d', limit=500)
+        if needs_m15:
+            m15_df_source = fetch_ohlcv(exchange, symbol, '15m', limit=1000)
     except Exception:
         pass
 
-    # Fetch Daily Change Data (Comparison to yesterday)
+    # Calculate Daily Change (reuse d1_df_source if available to avoid redundant fetch)
     daily_change_pct = "N/A"
     try:
-        daily_df = fetch_ohlcv(exchange, symbol, '1d', limit=2)
+        # Reuse d1_df_source if we already fetched it
+        daily_df = d1_df_source if d1_df_source is not None else fetch_ohlcv(exchange, symbol, '1d', limit=2)
         if daily_df is not None and len(daily_df) >= 2:
             prev_close = daily_df['close'].iloc[-2]
             curr_price = daily_df['close'].iloc[-1]
@@ -615,47 +648,60 @@ def main():
     all_results = []
     
     # Use ThreadPoolExecutor for parallel processing
+    print(f"\n🔍 Scanning {num_symbols} symbols across {len(TIMEFRAMES)} timeframes...")
+    print("=" * 60)
+
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         # Create a dictionary to keep track of futures
         future_to_symbol = {executor.submit(scan_symbol, exchange, symbol): symbol for symbol in symbols}
-        
+
         count = 0
+        signals_found = 0
         for future in as_completed(future_to_symbol):
             symbol = future_to_symbol[future]
             try:
                 results = future.result()
                 if results:
                     all_results.extend(results)
+                    signals_found += len(results)
                     for res in results:
-                        print(f"!!! SIGNAL FOUND: {res['Crypto Name']} [{res['Timeperiod']}] -> {res['Signal']}")
+                        print(f"✅ SIGNAL FOUND: {res['Crypto Name']} [{res['Timeperiod']}] -> {res['Signal']} (Angle: {res['Angle']})")
             except Exception as e:
-                print(f"Symbol {symbol} generated an exception: {e}")
-            
+                print(f"⚠️  Error scanning {symbol}: {e}")
+
             count += 1
             if count % 10 == 0 or count == num_symbols:
-                print(f"Progress: {count}/{num_symbols} symbols completed...")
+                progress_pct = (count / num_symbols) * 100
+                print(f"📊 Progress: {count}/{num_symbols} ({progress_pct:.1f}%) | Signals Found: {signals_found}")
         
     # Process and Output Results
+    print("\n" + "=" * 60)
     results_df = pd.DataFrame(all_results)
-    
+
     # Always save a CSV (even if empty)
     timestamp_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     filename = f"ama_pro_scan_results_{timestamp_str}.csv"
     results_df.to_csv(filename, index=False)
-    print(f"\nResults saved to {filename}")
-    
+    print(f"💾 Results saved to {filename}")
+
     if not all_results:
-        print("No signals found matching criteria.")
+        print("\n❌ No signals found matching criteria.")
     else:
-        print(results_df)
+        print(f"\n✅ {len(all_results)} Total Signals Found!")
+        print("\n" + results_df.to_string(index=False))
 
     # Always send Gmail Notification (status report)
+    print("\n📧 Sending email notification...")
     send_gmail_notification(all_results)
 
     duration = time.time() - start_time
-    print("\n" + "="*50)
-    print(f"SCAN COMPLETED in {duration/60:.2f} minutes")
-    print("="*50)
+    print("\n" + "=" * 60)
+    print(f"✅ SCAN COMPLETED in {duration/60:.2f} minutes ({duration:.1f} seconds)")
+    print(f"📊 Summary: {len(all_results)} signals from {num_symbols} symbols")
+    print("=" * 60)
+
+    # Cleanup old result files
+    cleanup_old_results(keep_last=10)
 
 if __name__ == "__main__":
     main()

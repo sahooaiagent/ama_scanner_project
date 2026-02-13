@@ -11,8 +11,15 @@ const logOutput = document.getElementById('log-output');
 const refreshResultsBtn = document.getElementById('refresh-results');
 const clearLogsBtn = document.getElementById('clear-logs-btn');
 const jobsList = document.getElementById('jobs-list');
+const searchInput = document.getElementById('search-input');
+const signalFilter = document.getElementById('signal-filter');
+const timeframeFilter = document.getElementById('timeframe-filter');
+const exportCsvBtn = document.getElementById('export-csv');
+const resultsCount = document.getElementById('results-count');
 
 let logInterval = null;
+let allResults = [];
+let currentSort = { column: null, direction: 'asc' };
 const tfMap = {
     "15min": "15m", "30min": "30m", "45min": "45m",
     "1hour": "1h", "2hour": "2h", "4hour": "4h",
@@ -22,6 +29,34 @@ const tfMap = {
 const reverseTfMap = Object.fromEntries(Object.entries(tfMap).map(([k, v]) => [v, k]));
 let allTimeframes = Object.keys(tfMap);
 let selectedTFs = new Set(['1hour', '4hour']);
+
+// Toast Notification Function
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+
+    const icons = {
+        'success': 'fa-check-circle',
+        'error': 'fa-exclamation-circle',
+        'info': 'fa-info-circle',
+        'warning': 'fa-exclamation-triangle'
+    };
+
+    toast.innerHTML = `
+        <i class="fas ${icons[type] || icons.info}"></i>
+        <span>${message}</span>
+    `;
+
+    container.appendChild(toast);
+
+    setTimeout(() => toast.classList.add('show'), 10);
+
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
 
 async function init() {
     renderOptions();
@@ -88,14 +123,33 @@ async function init() {
         // Also clear backend logs
         try {
             await fetch(`${API_URL}/clear-logs`, { method: 'POST' });
+            showToast('Logs cleared successfully', 'success');
         } catch (error) {
             console.error('Error clearing logs:', error);
+            showToast('Failed to clear logs', 'error');
         }
+    });
+
+    // Search and Filter Event Listeners
+    searchInput.addEventListener('input', filterAndDisplayResults);
+    signalFilter.addEventListener('change', filterAndDisplayResults);
+    timeframeFilter.addEventListener('change', filterAndDisplayResults);
+
+    // Export CSV
+    exportCsvBtn.addEventListener('click', exportToCSV);
+
+    // Table Sorting
+    document.querySelectorAll('.sortable').forEach(header => {
+        header.addEventListener('click', () => {
+            const column = header.dataset.sort;
+            sortResults(column);
+        });
     });
 
     // Auto-refresh
     setInterval(fetchResults, 15000);
     setInterval(fetchJobs, 20000);
+    setInterval(checkScanStatus, 5000);
 }
 
 async function fetchConfig() {
@@ -115,9 +169,53 @@ async function fetchResults() {
     try {
         const response = await fetch(`${API_URL}/results?t=${Date.now()}`);
         const data = await response.json();
-        renderResults(data.results || []);
+        allResults = data.results || [];
+
+        // Reapply current sort if one is active
+        if (currentSort.column) {
+            applySortToResults();
+            updateSortIcons();
+        }
+
+        filterAndDisplayResults();
     } catch (error) {
         console.error('Error fetching results:', error);
+        showToast('Failed to fetch results', 'error');
+    }
+}
+
+function filterAndDisplayResults() {
+    let filtered = allResults;
+
+    // Apply search filter
+    const searchTerm = searchInput.value.toLowerCase();
+    if (searchTerm) {
+        filtered = filtered.filter(r =>
+            (r['Crypto Name'] || '').toLowerCase().includes(searchTerm)
+        );
+    }
+
+    // Apply signal filter
+    const signal = signalFilter.value;
+    if (signal !== 'all') {
+        filtered = filtered.filter(r => r.Signal === signal);
+    }
+
+    // Apply timeframe filter
+    const tf = timeframeFilter.value;
+    if (tf !== 'all') {
+        filtered = filtered.filter(r => r.Timeperiod === tf);
+    }
+
+    renderResults(filtered);
+    updateResultsCount(filtered.length, allResults.length);
+}
+
+function updateResultsCount(filtered, total) {
+    if (filtered === total) {
+        resultsCount.textContent = `Showing ${total} result${total !== 1 ? 's' : ''}`;
+    } else {
+        resultsCount.textContent = `Showing ${filtered} of ${total} result${total !== 1 ? 's' : ''}`;
     }
 }
 
@@ -188,12 +286,11 @@ async function runScan() {
     const timeframes = Array.from(selectedTFs).map(tf => tfMap[tf] || tf);
 
     if (timeframes.length === 0) {
-        alert('Please select at least one timeframe');
+        showToast('Please select at least one timeframe', 'warning');
         return;
     }
 
     runBtn.disabled = true;
-    const originalHtml = runBtn.innerHTML;
     runBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning...';
 
     // Add SCAN IN PROGRESS message
@@ -212,14 +309,17 @@ async function runScan() {
         if (response.ok) {
             logOutput.innerHTML += '<div class="log-entry" style="color: var(--success)">[SYSTEM] Scan started successfully.</div>';
             logOutput.scrollTop = logOutput.scrollHeight;
+            showToast('Scan started successfully', 'success');
+        } else {
+            showToast('Failed to start scan', 'error');
+            runBtn.disabled = false;
+            runBtn.innerHTML = '<i class="fas fa-play"></i> Run Scanner Now';
         }
     } catch (error) {
         console.error('Error starting scan:', error);
-    } finally {
-        setTimeout(() => {
-            runBtn.disabled = false;
-            runBtn.innerHTML = originalHtml;
-        }, 3000);
+        showToast('Error starting scan', 'error');
+        runBtn.disabled = false;
+        runBtn.innerHTML = '<i class="fas fa-play"></i> Run Scanner Now';
     }
 }
 
@@ -229,11 +329,11 @@ async function scheduleScan() {
     const timeframes = Array.from(selectedTFs).map(tf => tfMap[tf] || tf);
 
     if (!time) {
-        alert('Please select a date and time');
+        showToast('Please select a date and time', 'warning');
         return;
     }
     if (timeframes.length === 0) {
-        alert('Please select at least one timeframe');
+        showToast('Please select at least one timeframe', 'warning');
         return;
     }
 
@@ -248,11 +348,15 @@ async function scheduleScan() {
             })
         });
         if (response.ok) {
-            alert('Scan scheduled successfully!');
+            showToast('Scan scheduled successfully!', 'success');
+            scheduleTime.value = '';
             fetchJobs();
+        } else {
+            showToast('Failed to schedule scan', 'error');
         }
     } catch (error) {
         console.error('Error scheduling scan:', error);
+        showToast('Error scheduling scan', 'error');
     }
 }
 
@@ -278,6 +382,126 @@ function renderJobs(jobs) {
                 <button class="cancel-btn">Cancel</button>
             </div>
         `).join('');
+}
+
+function sortResults(column) {
+    if (currentSort.column === column) {
+        currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        currentSort.column = column;
+        currentSort.direction = 'asc';
+    }
+
+    // Update sort icons
+    updateSortIcons();
+
+    // Apply sort and refresh display
+    applySortToResults();
+    filterAndDisplayResults();
+}
+
+function updateSortIcons() {
+    document.querySelectorAll('.sort-icon').forEach(icon => {
+        icon.className = 'fas fa-sort sort-icon';
+    });
+
+    if (currentSort.column) {
+        const header = document.querySelector(`[data-sort="${currentSort.column}"]`);
+        if (header) {
+            const icon = header.querySelector('.sort-icon');
+            icon.className = `fas fa-sort-${currentSort.direction === 'asc' ? 'up' : 'down'} sort-icon active`;
+        }
+    }
+}
+
+function applySortToResults() {
+    if (!currentSort.column) return;
+
+    allResults.sort((a, b) => {
+        let aVal, bVal;
+
+        switch (currentSort.column) {
+            case 'symbol':
+                aVal = a['Crypto Name'] || '';
+                bVal = b['Crypto Name'] || '';
+                break;
+            case 'timeframe':
+                aVal = a.Timeperiod || '';
+                bVal = b.Timeperiod || '';
+                break;
+            case 'signal':
+                aVal = a.Signal || '';
+                bVal = b.Signal || '';
+                break;
+            case 'angle':
+                aVal = parseFloat(a.Angle) || 0;
+                bVal = parseFloat(b.Angle) || 0;
+                break;
+            case 'change':
+                aVal = parseFloat(a['Daily Change']) || 0;
+                bVal = parseFloat(b['Daily Change']) || 0;
+                break;
+            case 'timestamp':
+                aVal = new Date(a.Timestamp || 0);
+                bVal = new Date(b.Timestamp || 0);
+                break;
+            default:
+                return 0;
+        }
+
+        if (aVal < bVal) return currentSort.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return currentSort.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+}
+
+function exportToCSV() {
+    if (allResults.length === 0) {
+        showToast('No results to export', 'warning');
+        return;
+    }
+
+    const headers = ['Crypto Name', 'Timeperiod', 'Signal', 'Angle', 'Daily Change', 'Timestamp'];
+    const csv = [
+        headers.join(','),
+        ...allResults.map(r => [
+            r['Crypto Name'] || '',
+            r.Timeperiod || '',
+            r.Signal || '',
+            r.Angle || '',
+            r['Daily Change'] || '',
+            r.Timestamp || ''
+        ].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ama_pro_results_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+
+    showToast('Results exported successfully', 'success');
+}
+
+async function checkScanStatus() {
+    try {
+        const response = await fetch(`${API_URL}/status`);
+        const data = await response.json();
+
+        if (data.scan_running) {
+            runBtn.disabled = true;
+            runBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning...';
+        } else if (runBtn.disabled && !runBtn.innerHTML.includes('Scanning')) {
+            // Don't re-enable if it's disabled for another reason
+        } else if (!runBtn.innerHTML.includes('Scanning')) {
+            runBtn.disabled = false;
+            runBtn.innerHTML = '<i class="fas fa-play"></i> Run Scanner Now';
+        }
+    } catch (error) {
+        console.error('Error checking scan status:', error);
+    }
 }
 
 function startLogPolling() {
