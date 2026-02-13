@@ -7,7 +7,7 @@ from typing import List, Optional
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from apscheduler.schedulers.asyncio import AsyncioScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.memory import MemoryJobStore
 import pandas as pd
 import glob
@@ -26,7 +26,7 @@ app.add_middleware(
 jobstores = {
     'default': MemoryJobStore()
 }
-scheduler = AsyncioScheduler(jobstores=jobstores)
+scheduler = AsyncIOScheduler(jobstores=jobstores)
 
 LOG_FILE = "web_dashboard/scanner_run.log"
 RESULTS_DIR = "." # Results are saved as CSVs in the root by the scanner

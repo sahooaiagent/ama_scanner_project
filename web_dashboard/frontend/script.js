@@ -13,8 +13,14 @@ const jobsList = document.getElementById('jobs-list');
 const refreshResults = document.getElementById('refresh-results');
 
 let logInterval = null;
-let allTimeframes = ["15m", "30m", "45m", "1h", "2h", "4h", "12h", "1d", "2d", "1w", "1M"]; // Default fallback
-let selectedTFs = new Set(['1h', '4h']);
+const tfMap = {
+    "15min": "15m", "30min": "30m", "45min": "45m",
+    "1hour": "1h", "2hour": "2h", "4hour": "4h",
+    "12hour": "12h", "1day": "1d", "2day": "2d",
+    "1week": "1w", "1Month": "1M"
+};
+let allTimeframes = Object.keys(tfMap);
+let selectedTFs = new Set(['1hour', '4hour']);
 
 async function init() {
     renderOptions(); // Initial render with defaults
@@ -54,12 +60,14 @@ async function init() {
     });
 }
 
+const reverseTfMap = Object.fromEntries(Object.entries(tfMap).map(([k, v]) => [v, k]));
+
 async function fetchConfig() {
     try {
         const response = await fetch(`${API_URL}/config`);
         const data = await response.json();
         if (data.available_timeframes) {
-            allTimeframes = data.available_timeframes;
+            allTimeframes = data.available_timeframes.map(tf => reverseTfMap[tf] || tf);
             renderOptions();
             renderTags();
         }
@@ -155,7 +163,7 @@ function startLogPolling() {
 }
 
 async function triggerAction(isSchedule = false) {
-    const timeframes = Array.from(selectedTFs);
+    const timeframes = Array.from(selectedTFs).map(label => tfMap[label] || label);
     if (timeframes.length === 0) {
         alert('Please select at least one timeframe.');
         return;
