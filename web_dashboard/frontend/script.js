@@ -13,10 +13,13 @@ const jobsList = document.getElementById('jobs-list');
 const refreshResults = document.getElementById('refresh-results');
 
 let logInterval = null;
-let allTimeframes = [];
+let allTimeframes = ["15m", "30m", "45m", "1h", "2h", "4h", "12h", "1d", "2d", "1w", "1M"]; // Default fallback
 let selectedTFs = new Set(['1h', '4h']);
 
 async function init() {
+    renderOptions(); // Initial render with defaults
+    renderTags();
+
     await fetchConfig();
     await fetchResults();
     await fetchJobs();
@@ -29,8 +32,25 @@ async function init() {
         }
     });
 
-    selectedTags.addEventListener('click', () => {
-        timeframeOptions.classList.toggle('active');
+    timeframeDropdown.addEventListener('click', (e) => {
+        // Only toggle if we didn't click an option or a tag-remove icon
+        if (!e.target.classList.contains('option') && !e.target.classList.contains('fa-times')) {
+            timeframeOptions.classList.toggle('active');
+        }
+    });
+
+    // Event delegation for options
+    timeframeOptions.addEventListener('click', (e) => {
+        if (e.target.classList.contains('option')) {
+            const val = e.target.getAttribute('data-value');
+            if (selectedTFs.has(val)) {
+                selectedTFs.delete(val);
+            } else {
+                selectedTFs.add(val);
+            }
+            renderOptions();
+            renderTags();
+        }
     });
 }
 
@@ -38,11 +58,14 @@ async function fetchConfig() {
     try {
         const response = await fetch(`${API_URL}/config`);
         const data = await response.json();
-        allTimeframes = data.available_timeframes;
-        renderOptions();
-        renderTags();
+        if (data.available_timeframes) {
+            allTimeframes = data.available_timeframes;
+            renderOptions();
+            renderTags();
+        }
     } catch (error) {
         console.error('Error fetching config:', error);
+        // We still have fallback values, so it's fine
     }
 }
 
@@ -52,19 +75,6 @@ function renderOptions() {
             ${tf}
         </div>
     `).join('');
-
-    document.querySelectorAll('.option').forEach(opt => {
-        opt.addEventListener('click', () => {
-            const val = opt.getAttribute('data-value');
-            if (selectedTFs.has(val)) {
-                selectedTFs.delete(val);
-            } else {
-                selectedTFs.add(val);
-            }
-            renderOptions();
-            renderTags();
-        });
-    });
 }
 
 function renderTags() {

@@ -183,8 +183,9 @@ header {
 }
 
 .dropdown-header {
-    min-height: 45px;
-    padding: 8px 15px;
+    min-height: 48px;
+    padding: 10px 40px 10px 15px;
+    /* Leave space for chevron */
     background: var(--glass-border);
     border: 1px solid var(--glass-border);
     border-radius: 12px;
@@ -194,10 +195,33 @@ header {
     align-items: center;
     cursor: pointer;
     transition: all 0.2s ease;
+    position: relative;
+}
+
+.dropdown-header::after {
+    content: '\f107';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
+    transition: transform 0.3s ease;
+}
+
+.dropdown-options.active+.dropdown-header::after {
+    /* This doesn't work because it's after the header. Let's fix the selector later if needed. */
+}
+
+/* Let's just use a simpler selector approach for the arrow */
+.custom-multiselect:has(.active) .dropdown-header::after {
+    transform: translateY(-50%) rotate(180deg);
 }
 
 .dropdown-header:hover {
     background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
 .placeholder {
