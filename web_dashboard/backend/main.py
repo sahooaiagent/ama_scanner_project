@@ -28,8 +28,8 @@ jobstores = {
 }
 scheduler = AsyncIOScheduler(jobstores=jobstores)
 
-LOG_FILE = "web_dashboard/scanner_run.log"
-RESULTS_DIR = "." # Results are saved as CSVs in the root by the scanner
+LOG_FILE = "../scanner_run.log"
+RESULTS_DIR = ".." # Results are saved as CSVs in the root by the scanner
 
 class ScanRequest(BaseModel):
     timeframes: List[str]
@@ -94,7 +94,7 @@ async def trigger_scan(request: ScanRequest, background_tasks: BackgroundTasks):
 @app.get("/results")
 async def get_results():
     """Fetches the latest scan results from CSV files."""
-    csv_files = glob.glob("ama_pro_scan_results_*.csv")
+    csv_files = glob.glob("../ama_pro_scan_results_*.csv")
     if not csv_files:
         return {"results": []}
     

@@ -549,3 +549,255 @@ td {
         grid-template-columns: 1fr;
     }
 }
+.scheduler-premium {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.scheduler-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--accent-blue);
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.scheduler-header i {
+    font-size: 1.2rem;
+}
+
+.scheduler-body {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.input-with-icon-premium {
+    position: relative;
+    flex: 1;
+}
+
+.input-with-icon-premium i {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--accent-blue);
+    font-size: 1.1rem;
+}
+
+.input-with-icon-premium input {
+    width: 100%;
+    padding: 12px 15px 12px 45px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    color: white;
+    font-family: inherit;
+    font-size: 1rem;
+    outline: none;
+}
+
+.glow-btn {
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.05);
+}
+
+.glow-btn:hover {
+    box-shadow: 0 0 20px rgba(157, 80, 187, 0.3);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.no-margin {
+    margin: 0 !important;
+}
+
+.card-header-flex {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+}
+
+.danger-btn-small {
+    padding: 8px 15px;
+    background: rgba(255, 77, 77, 0.1);
+    color: var(--danger);
+    border: 1px solid rgba(255, 77, 77, 0.2);
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.danger-btn-small:hover {
+    background: var(--danger);
+    color: white;
+}
+
+.badge-tf {
+    background: rgba(0, 210, 255, 0.1);
+    color: var(--accent-blue);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+
+/* Sidebar Navigation */
+.sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 250px;
+    height: 100vh;
+    padding: 30px 20px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.sidebar-header h3 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 15px 20px;
+    border-radius: 12px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.nav-item i {
+    font-size: 1.2rem;
+    width: 24px;
+}
+
+.nav-item span {
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+.nav-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.nav-item.active {
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+    color: white;
+}
+
+/* Adjust main container for sidebar */
+.dashboard-container {
+    margin-left: 270px;
+    padding: 40px 30px;
+}
+
+/* Button group adjustments */
+.button-group-single {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.button-group-single .primary-btn {
+    width: 100%;
+    max-width: 400px;
+}
+
+/* Schedule section styling */
+.scheduled-jobs-section {
+    margin-top: 30px;
+}
+
+.scheduled-jobs-section h3 {
+    font-size: 1rem;
+    margin-bottom: 15px;
+    color: var(--text-primary);
+}
+
+/* Daily Change column styling */
+.daily-change-positive {
+    color: var(--success);
+    font-weight: 700;
+}
+
+.daily-change-negative {
+    color: var(--danger);
+    font-weight: 700;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+    .sidebar {
+        width: 80px;
+        padding: 30px 10px;
+    }
+    
+    .sidebar-header h3,
+    .nav-item span {
+        display: none;
+    }
+    
+    .nav-item {
+        justify-content: center;
+        padding: 15px;
+    }
+    
+    .dashboard-container {
+        margin-left: 100px;
+    }
+}
+
+@media (max-width: 768px) {
+    .sidebar {
+        width: 100%;
+        height: auto;
+        position: relative;
+        flex-direction: row;
+        padding: 15px;
+    }
+    
+    .sidebar-nav {
+        flex-direction: row;
+        flex: 1;
+        justify-content: space-around;
+    }
+    
+    .nav-item span {
+        display: none;
+    }
+    
+    .dashboard-container {
+        margin-left: 0;
+        padding: 20px 15px;
+    }
+}

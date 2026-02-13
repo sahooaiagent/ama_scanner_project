@@ -18,18 +18,40 @@
         <div class="blur-circle circle-2"></div>
     </div>
 
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar glass">
+        <div class="sidebar-header">
+            <span class="pulse"></span>
+            <h3>AMA Pro</h3>
+        </div>
+        <div class="sidebar-nav">
+            <a href="#config-section" class="nav-item active" data-section="config-section">
+                <i class="fas fa-sliders-h"></i>
+                <span>Configuration</span>
+            </a>
+            <a href="#schedule-section" class="nav-item" data-section="schedule-section">
+                <i class="fas fa-calendar-check"></i>
+                <span>Schedule</span>
+            </a>
+            <a href="#logs-section" class="nav-item" data-section="logs-section">
+                <i class="fas fa-terminal"></i>
+                <span>Diagnostics</span>
+            </a>
+        </div>
+    </nav>
+
     <main class="dashboard-container">
         <header>
             <div class="logo">
-                <span class="pulse"></span>
-                <h1>AMA Pro Scanner</h1>
+                <h1>AMA Pro Scanner Dashboard</h1>
             </div>
             <div class="status-badge" id="app-status">
                 <span class="dot"></span> Online
             </div>
         </header>
 
-        <section class="controls-grid">
+        <!-- Configuration Section -->
+        <section id="config-section" class="controls-grid">
             <div class="card glass config-card">
                 <h2><i class="fas fa-sliders-h"></i> Scan Configuration</h2>
 
@@ -64,42 +86,18 @@
                                 </select>
                             </div>
                         </div>
-
-                        <div class="form-group">
-                            <label><i class="far fa-calendar-alt"></i> Schedule Run</label>
-                            <div class="input-with-icon">
-                                <i class="far fa-clock"></i>
-                                <input type="datetime-local" id="schedule-time">
-                            </div>
-                        </div>
                     </div>
                 </div>
 
-                <div class="button-group">
+                <div class="button-group-single">
                     <button id="run-btn" class="primary-btn pulse-btn">
                         <i class="fas fa-play"></i> Run Scanner Now
                     </button>
-                    <div class="scheduler-premium shadow-card">
-                        <div class="scheduler-header">
-                            <i class="fas fa-calendar-check"></i>
-                            <span>Schedule Future Scan</span>
-                        </div>
-                        <div class="scheduler-body">
-                            <div class="form-group no-margin">
-                                <div class="input-with-icon-premium">
-                                    <i class="fas fa-clock"></i>
-                                    <input type="datetime-local" id="schedule-time">
-                                </div>
-                            </div>
-                            <button id="schedule-btn" class="secondary-btn glow-btn">
-                                <i class="fas fa-magic"></i> Set Schedule
-                            </button>
-                        </div>
-                    </div>
                 </div>
             </div>
         </section>
 
+        <!-- Results Section -->
         <section class="results-card card glass">
             <div class="card-header">
                 <h2>Latest Signals Detected</h2>
@@ -113,6 +111,7 @@
                             <th>Timeframe</th>
                             <th>Signal</th>
                             <th>Angle</th>
+                            <th>Daily Change</th>
                             <th>Timestamp</th>
                         </tr>
                     </thead>
@@ -123,14 +122,32 @@
             </div>
         </section>
 
-        <section class="scheduled-jobs card glass">
-            <h2>Scheduled Tasks</h2>
-            <div id="jobs-list" class="jobs-grid">
-                <!-- Scheduled jobs injected here -->
+        <!-- Schedule Section -->
+        <section id="schedule-section" class="card glass">
+            <h2><i class="fas fa-calendar-check"></i> Schedule Future Scan</h2>
+            <div class="scheduler-premium">
+                <div class="scheduler-body">
+                    <div class="form-group no-margin">
+                        <div class="input-with-icon-premium">
+                            <i class="fas fa-clock"></i>
+                            <input type="datetime-local" id="schedule-time">
+                        </div>
+                    </div>
+                    <button id="schedule-btn" class="secondary-btn glow-btn">
+                        <i class="fas fa-magic"></i> Set Schedule
+                    </button>
+                </div>
+            </div>
+            <div class="scheduled-jobs-section">
+                <h3>Scheduled Tasks</h3>
+                <div id="jobs-list" class="jobs-grid">
+                    <!-- Scheduled jobs injected here -->
+                </div>
             </div>
         </section>
 
-        <section class="card glass log-card-bottom">
+        <!-- Diagnostics/Logs Section -->
+        <section id="logs-section" class="card glass log-card-bottom">
             <div class="card-header-flex">
                 <h2><i class="fas fa-terminal"></i> Live Run Diagnostics</h2>
                 <button id="clear-logs-btn" class="danger-btn-small">

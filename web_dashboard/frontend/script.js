@@ -32,6 +32,19 @@ async function init() {
     await fetchJobs();
     startLogPolling();
 
+    // Sidebar navigation
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            const section = item.dataset.section;
+            document.getElementById(section)?.scrollIntoView({ behavior: 'smooth' });
+
+            // Update active state
+            document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+            item.classList.add('active');
+        });
+    });
+
     // Toggling dropdown
     document.addEventListener('click', (e) => {
         if (!timeframeDropdown.contains(e.target)) {
@@ -69,15 +82,13 @@ async function init() {
     });
 
     clearLogsBtn.addEventListener('click', async () => {
-        if (confirm('Are you sure you want to clear all logs?')) {
-            try {
-                const response = await fetch(`${API_URL}/clear-logs`, { method: 'POST' });
-                if (response.ok) {
-                    logOutput.innerHTML = '<div class="log-entry" style="color: var(--accent-blue)">Logs cleared.</div>';
-                }
-            } catch (error) {
-                console.error('Error clearing logs:', error);
+        try {
+            const response = await fetch(`${API_URL}/clear-logs`, { method: 'POST' });
+            if (response.ok) {
+                logOutput.innerHTML = '<div class="log-entry" style="color: var(--accent-blue)">Logs cleared.</div>';
             }
+        } catch (error) {
+            console.error('Error clearing logs:', error);
         }
     });
 
@@ -114,7 +125,7 @@ function renderResults(results) {
     tbody.innerHTML = '';
 
     if (!results || results.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 40px; color: var(--text-secondary);">No signals detected yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 40px; color: var(--text-secondary);">No signals detected yet.</td></tr>';
         return;
     }
 
@@ -123,11 +134,20 @@ function renderResults(results) {
         const signal = (res.Signal || "N/A").toString();
         const signalClass = signal.toLowerCase().includes('long') ? 'signal-long' : 'signal-short';
 
+        // Parse daily change
+        const dailyChange = res['Daily Change'] || 'N/A';
+        let dailyChangeClass = '';
+        if (dailyChange !== 'N/A') {
+            const changeValue = parseFloat(dailyChange);
+            dailyChangeClass = changeValue >= 0 ? 'daily-change-positive' : 'daily-change-negative';
+        }
+
         row.innerHTML = `
             <td><strong>${res['Crypto Name'] || "Unknown"}</strong></td>
             <td><span class="badge-tf">${res.Timeperiod || "N/A"}</span></td>
             <td class="${signalClass}">${signal}</td>
-            <td>${res.Angle || 0}°</td>
+            <td>${res.Angle || 0}</td>
+            <td class="${dailyChangeClass}">${dailyChange}</td>
             <td style="font-size: 0.8rem; color: var(--text-secondary)">${res.Timestamp || "N/A"}</td>
         `;
         tbody.appendChild(row);

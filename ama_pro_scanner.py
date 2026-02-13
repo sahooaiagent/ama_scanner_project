@@ -481,6 +481,17 @@ def scan_symbol(exchange, symbol):
     except Exception:
         pass
 
+    # Fetch Daily Change Data (Comparison to yesterday)
+    daily_change_pct = "N/A"
+    try:
+        daily_df = fetch_ohlcv(exchange, symbol, '1d', limit=2)
+        if daily_df is not None and len(daily_df) >= 2:
+            prev_close = daily_df['close'].iloc[-2]
+            curr_price = daily_df['close'].iloc[-1]
+            daily_change_pct = f"{((curr_price - prev_close) / prev_close) * 100:.2f}%"
+    except Exception:
+        pass
+
     for tf in TIMEFRAMES:
         try:
             df = None
@@ -518,6 +529,7 @@ def scan_symbol(exchange, symbol):
                             'Timeperiod': tf,
                             'Signal': signal,
                             'Angle': f"{angle:.2f}°" if angle is not None else "N/A",
+                            'Daily Change': daily_change_pct,
                             'Timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         })
         except Exception:
