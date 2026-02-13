@@ -37,15 +37,8 @@ class ScanRequest(BaseModel):
     schedule_time: Optional[str] = None # ISO format string
 
 async def run_scanner(timeframes: List[str], symbol_limit: int):
-    """Executes the scanner script."""
+    """Executes the scanner script using asyncio."""
     tf_str = ",".join(timeframes)
-    # We need to modify ama_pro_scanner.py to accept multiple timeframes via CLI if not already supported
-    # Or just run it multiple times? Actually, let's look at ama_pro_scanner.py again.
-    # It currently uses a fixed TIMEFRAMES list.
-    
-    # We'll create a temporary config or pass args if we modify the script.
-    # For now, let's assume we can pass them.
-    
     cmd = [
         "python3", "ama_pro_scanner.py", 
         str(symbol_limit), 
@@ -55,9 +48,21 @@ async def run_scanner(timeframes: List[str], symbol_limit: int):
     with open(LOG_FILE, "a") as log:
         log.write(f"\n--- Starting Scan: {datetime.datetime.now()} ---\n")
         log.write(f"Parameters: Symbols={symbol_limit}, Timeframes={tf_str}\n")
-        process = subprocess.Popen(cmd, stdout=log, stderr=log, text=True)
-        process.wait()
-        log.write(f"--- Scan Completed: {datetime.datetime.now()} ---\n")
+        log.flush()
+        
+        try:
+            # Use asyncio.create_subprocess_exec for non-blocking execution
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=log,
+                stderr=log
+            )
+            await process.wait()
+            log.write(f"--- Scan Completed: {datetime.datetime.now()} ---\n")
+        except Exception as e:
+            log.write(f"--- ERROR: Scan failed with exception: {str(e)} ---\n")
+        finally:
+            log.flush()
 
 @app.on_event("startup")
 async def startup_event():
@@ -93,12 +98,29 @@ async def get_results():
     if not csv_files:
         return {"results": []}
     
-    latest_file = max(csv_files, key=os.path.getctime)
+    # Sort files by modification time, latest first
+    csv_files.sort(key=os.path.getmtime, reverse=True)
+    
+    all_results = []
+    # Optionally limit to the last few scan files to keep payload reasonable
+    for latest_file in csv_files[:5]: 
+        try:
+            df = pd.read_csv(latest_file)
+            all_results.extend(df.to_dict(orient="records"))
+        except Exception as e:
+            print(f"Error reading {latest_file}: {e}")
+            
+    return {"results": all_results}
+
+@app.post("/clear-logs")
+async def clear_logs():
+    """Clears the scanner log file."""
     try:
-        df = pd.read_csv(latest_file)
-        return {"results": df.to_dict(orient="records"), "file": latest_file}
+        with open(LOG_FILE, "w") as f:
+            f.write(f"--- Logs cleared at {datetime.datetime.now()} ---\n")
+        return {"status": "success", "message": "Logs cleared"}
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/logs")
 async def get_logs():

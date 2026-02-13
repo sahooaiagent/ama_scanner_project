@@ -8,9 +8,9 @@ const scheduleTime = document.getElementById('schedule-time');
 const runBtn = document.getElementById('run-btn');
 const scheduleBtn = document.getElementById('schedule-btn');
 const logOutput = document.getElementById('log-output');
-const resultsTable = document.getElementById('results-table').getElementsByTagName('tbody')[0];
+const refreshResultsBtn = document.getElementById('refresh-results');
+const clearLogsBtn = document.getElementById('clear-logs-btn');
 const jobsList = document.getElementById('jobs-list');
-const refreshResults = document.getElementById('refresh-results');
 
 let logInterval = null;
 const tfMap = {
@@ -19,11 +19,12 @@ const tfMap = {
     "12hour": "12h", "1day": "1d", "2day": "2d",
     "1week": "1w", "1Month": "1M"
 };
+const reverseTfMap = Object.fromEntries(Object.entries(tfMap).map(([k, v]) => [v, k]));
 let allTimeframes = Object.keys(tfMap);
 let selectedTFs = new Set(['1hour', '4hour']);
 
 async function init() {
-    renderOptions(); // Initial render with defaults
+    renderOptions();
     renderTags();
 
     await fetchConfig();
@@ -31,36 +32,59 @@ async function init() {
     await fetchJobs();
     startLogPolling();
 
-    // Dropdown toggling
+    // Toggling dropdown
     document.addEventListener('click', (e) => {
         if (!timeframeDropdown.contains(e.target)) {
             timeframeOptions.classList.remove('active');
         }
     });
 
-    timeframeDropdown.addEventListener('click', (e) => {
-        // Only toggle if we didn't click an option or a tag-remove icon
-        if (!e.target.classList.contains('option') && !e.target.classList.contains('fa-times')) {
-            timeframeOptions.classList.toggle('active');
-        }
+    selectedTags.addEventListener('click', () => {
+        timeframeOptions.classList.toggle('active');
     });
 
     // Event delegation for options
     timeframeOptions.addEventListener('click', (e) => {
-        if (e.target.classList.contains('option')) {
-            const val = e.target.getAttribute('data-value');
-            if (selectedTFs.has(val)) {
-                selectedTFs.delete(val);
-            } else {
-                selectedTFs.add(val);
+        const option = e.target.closest('.option');
+        if (!option) return;
+
+        const val = option.dataset.value;
+        if (selectedTFs.has(val)) {
+            selectedTFs.delete(val);
+        } else {
+            selectedTFs.add(val);
+        }
+        renderOptions();
+        renderTags();
+    });
+
+    // Buttons
+    runBtn.addEventListener('click', runScan);
+    scheduleBtn.addEventListener('click', scheduleScan);
+    refreshResultsBtn.addEventListener('click', async () => {
+        const icon = refreshResultsBtn.querySelector('i') || refreshResultsBtn;
+        icon.classList.add('fa-spin');
+        await fetchResults();
+        setTimeout(() => icon.classList.remove('fa-spin'), 600);
+    });
+
+    clearLogsBtn.addEventListener('click', async () => {
+        if (confirm('Are you sure you want to clear all logs?')) {
+            try {
+                const response = await fetch(`${API_URL}/clear-logs`, { method: 'POST' });
+                if (response.ok) {
+                    logOutput.innerHTML = '<div class="log-entry" style="color: var(--accent-blue)">Logs cleared.</div>';
+                }
+            } catch (error) {
+                console.error('Error clearing logs:', error);
             }
-            renderOptions();
-            renderTags();
         }
     });
-}
 
-const reverseTfMap = Object.fromEntries(Object.entries(tfMap).map(([k, v]) => [v, k]));
+    // Auto-refresh
+    setInterval(fetchResults, 15000);
+    setInterval(fetchJobs, 20000);
+}
 
 async function fetchConfig() {
     try {
@@ -69,18 +93,52 @@ async function fetchConfig() {
         if (data.available_timeframes) {
             allTimeframes = data.available_timeframes.map(tf => reverseTfMap[tf] || tf);
             renderOptions();
-            renderTags();
         }
     } catch (error) {
         console.error('Error fetching config:', error);
-        // We still have fallback values, so it's fine
     }
+}
+
+async function fetchResults() {
+    try {
+        const response = await fetch(`${API_URL}/results?t=${Date.now()}`);
+        const data = await response.json();
+        renderResults(data.results || []);
+    } catch (error) {
+        console.error('Error fetching results:', error);
+    }
+}
+
+function renderResults(results) {
+    const tbody = document.querySelector('#results-table tbody');
+    tbody.innerHTML = '';
+
+    if (!results || results.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 40px; color: var(--text-secondary);">No signals detected yet.</td></tr>';
+        return;
+    }
+
+    results.forEach(res => {
+        const row = document.createElement('tr');
+        const signal = (res.Signal || "N/A").toString();
+        const signalClass = signal.toLowerCase().includes('long') ? 'signal-long' : 'signal-short';
+
+        row.innerHTML = `
+            <td><strong>${res['Crypto Name'] || "Unknown"}</strong></td>
+            <td><span class="badge-tf">${res.Timeperiod || "N/A"}</span></td>
+            <td class="${signalClass}">${signal}</td>
+            <td>${res.Angle || 0}°</td>
+            <td style="font-size: 0.8rem; color: var(--text-secondary)">${res.Timestamp || "N/A"}</td>
+        `;
+        tbody.appendChild(row);
+    });
 }
 
 function renderOptions() {
     timeframeOptions.innerHTML = allTimeframes.map(tf => `
         <div class="option ${selectedTFs.has(tf) ? 'selected' : ''}" data-value="${tf}">
-            ${tf}
+            <span>${tf}</span>
+            ${selectedTFs.has(tf) ? '<i class="fas fa-check"></i>' : ''}
         </div>
     `).join('');
 }
@@ -88,53 +146,88 @@ function renderOptions() {
 function renderTags() {
     if (selectedTFs.size === 0) {
         selectedTags.innerHTML = '<span class="placeholder">Select timeframes...</span>';
-    } else {
-        selectedTags.innerHTML = Array.from(selectedTFs).map(tf => `
-            <div class="tag">
-                ${tf} <i class="fas fa-times" onclick="removeTag(event, '${tf}')"></i>
-            </div>
-        `).join('');
+        return;
     }
+    selectedTags.innerHTML = Array.from(selectedTFs).map(tf => `
+        <span class="tag">
+            ${tf} <i class="fas fa-times" onclick="removeTf(event, '${tf}')"></i>
+        </span>
+    `).join('');
 }
 
-window.removeTag = (e, tf) => {
+window.removeTf = (e, tf) => {
     e.stopPropagation();
     selectedTFs.delete(tf);
     renderOptions();
     renderTags();
 };
 
-async function fetchResults() {
-    try {
-        const response = await fetch(`${API_URL}/results`);
-        const data = await response.json();
+async function runScan() {
+    const limit = symbolLimit.value;
+    const timeframes = Array.from(selectedTFs).map(tf => tfMap[tf] || tf);
 
-        if (data.results) {
-            resultsTable.innerHTML = data.results.map(res => `
-                <tr>
-                    <td>${res['Crypto Name']}</td>
-                    <td>${res['Timeperiod']}</td>
-                    <td class="${res['Signal'] === 'LONG' ? 'signal-long' : 'signal-short'}">${res['Signal']}</td>
-                    <td>${res['Angle'] || 'N/A'}</td>
-                    <td>${res['Timestamp']}</td>
-                </tr>
-            `).join('');
-        }
-    } catch (error) {
-        console.error('Error fetching results:', error);
+    if (timeframes.length === 0) {
+        alert('Please select at least one timeframe');
+        return;
     }
-}
 
-async function fetchLogs() {
+    runBtn.disabled = true;
+    const originalHtml = runBtn.innerHTML;
+    runBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Initializing...';
+
     try {
-        const response = await fetch(`${API_URL}/logs`);
-        const data = await response.json();
-        if (data.logs) {
-            logOutput.innerText = data.logs;
+        const response = await fetch(`${API_URL}/scan`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                timeframes,
+                symbol_limit: parseInt(limit)
+            })
+        });
+        if (response.ok) {
+            logOutput.innerHTML += '<div class="log-entry" style="color: var(--success)">[SYSTEM] Scan started successfully.</div>';
             logOutput.scrollTop = logOutput.scrollHeight;
         }
     } catch (error) {
-        console.error('Error fetching logs:', error);
+        console.error('Error starting scan:', error);
+    } finally {
+        setTimeout(() => {
+            runBtn.disabled = false;
+            runBtn.innerHTML = originalHtml;
+        }, 3000);
+    }
+}
+
+async function scheduleScan() {
+    const time = scheduleTime.value;
+    const limit = symbolLimit.value;
+    const timeframes = Array.from(selectedTFs).map(tf => tfMap[tf] || tf);
+
+    if (!time) {
+        alert('Please select a date and time');
+        return;
+    }
+    if (timeframes.length === 0) {
+        alert('Please select at least one timeframe');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/scan`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                timeframes,
+                symbol_limit: parseInt(limit),
+                schedule_time: new Date(time).toISOString()
+            })
+        });
+        if (response.ok) {
+            alert('Scan scheduled successfully!');
+            fetchJobs();
+        }
+    } catch (error) {
+        console.error('Error scheduling scan:', error);
     }
 }
 
@@ -142,19 +235,24 @@ async function fetchJobs() {
     try {
         const response = await fetch(`${API_URL}/status`);
         const data = await response.json();
-
-        jobsList.innerHTML = data.jobs.map(job => `
-            <div class="job-item">
-                <div class="job-info">
-                    <h4>Scanner Run</h4>
-                    <p>Next: ${job.next_run_time}</p>
-                </div>
-                <button class="cancel-btn">Cancel</button>
-            </div>
-        `).join('') || '<p style="color: grey; font-size: 0.9rem;">No active schedules</p>';
+        renderJobs(data.jobs || []);
     } catch (error) {
         console.error('Error fetching jobs:', error);
     }
+}
+
+function renderJobs(jobs) {
+    jobsList.innerHTML = jobs.length === 0
+        ? '<div class="no-jobs">No upcoming scheduled tasks.</div>'
+        : jobs.map(job => `
+            <div class="job-item glass">
+                <div class="job-info">
+                    <h4><i class="fas fa-clock"></i> Next Scan</h4>
+                    <p>${new Date(job.next_run_time).toLocaleString()}</p>
+                </div>
+                <button class="cancel-btn">Cancel</button>
+            </div>
+        `).join('');
 }
 
 function startLogPolling() {
@@ -162,52 +260,31 @@ function startLogPolling() {
     logInterval = setInterval(fetchLogs, 2000);
 }
 
-async function triggerAction(isSchedule = false) {
-    const timeframes = Array.from(selectedTFs).map(label => tfMap[label] || label);
-    if (timeframes.length === 0) {
-        alert('Please select at least one timeframe.');
-        return;
-    }
-
-    const payload = {
-        timeframes,
-        symbol_limit: parseInt(symbolLimit.value),
-        schedule_time: isSchedule ? scheduleTime.value : null
-    };
-
+async function fetchLogs() {
     try {
-        const response = await fetch(`${API_URL}/scan`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        const response = await fetch(`${API_URL}/logs?t=${Date.now()}`);
         const data = await response.json();
+        if (data.logs) {
+            const wasScrolledToBottom = logOutput.scrollHeight - logOutput.clientHeight <= logOutput.scrollTop + 1;
 
-        if (isSchedule) {
-            alert(`Scan scheduled for ${data.run_at}`);
-            fetchJobs();
-        } else {
-            console.log('Immediate scan started');
+            const processedLogs = data.logs.split('\n').map(line => {
+                if (!line.trim()) return '';
+                let style = '';
+                if (line.includes('SIGNAL FOUND')) style = 'color: var(--success); font-weight: bold;';
+                if (line.includes('ERROR') || line.includes('SyntaxError') || line.includes('failed')) style = 'color: var(--danger);';
+                if (line.includes('Starting Scan')) style = 'color: var(--accent-blue); border-top: 1px dotted var(--glass-border); padding-top: 5px; margin-top: 5px;';
+                return `<div class="log-entry" style="${style}">${line}</div>`;
+            }).join('');
+
+            logOutput.innerHTML = processedLogs;
+
+            if (wasScrolledToBottom) {
+                logOutput.scrollTop = logOutput.scrollHeight;
+            }
         }
     } catch (error) {
-        console.error('Error triggering scan:', error);
-        alert('Failed to trigger scan. Check backend status.');
+        console.error('Error fetching logs:', error);
     }
 }
-
-runBtn.addEventListener('click', () => triggerAction(false));
-scheduleBtn.addEventListener('click', () => {
-    if (!scheduleTime.value) {
-        alert('Please select a date and time for scheduling.');
-        return;
-    }
-    triggerAction(true);
-});
-
-refreshResults.addEventListener('click', fetchResults);
-
-// Auto-refresh results and jobs occasionally
-setInterval(fetchResults, 10000);
-setInterval(fetchJobs, 10000);
 
 init();

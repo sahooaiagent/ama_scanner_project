@@ -76,8 +76,26 @@
                 </div>
 
                 <div class="button-group">
-                    <button id="run-btn" class="primary-btn">Run Scanner Now</button>
-                    <button id="schedule-btn" class="secondary-btn">Schedule Run</button>
+                    <button id="run-btn" class="primary-btn pulse-btn">
+                        <i class="fas fa-play"></i> Run Scanner Now
+                    </button>
+                    <div class="scheduler-premium shadow-card">
+                        <div class="scheduler-header">
+                            <i class="fas fa-calendar-check"></i>
+                            <span>Schedule Future Scan</span>
+                        </div>
+                        <div class="scheduler-body">
+                            <div class="form-group no-margin">
+                                <div class="input-with-icon-premium">
+                                    <i class="fas fa-clock"></i>
+                                    <input type="datetime-local" id="schedule-time">
+                                </div>
+                            </div>
+                            <button id="schedule-btn" class="secondary-btn glow-btn">
+                                <i class="fas fa-magic"></i> Set Schedule
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -113,7 +131,12 @@
         </section>
 
         <section class="card glass log-card-bottom">
-            <h2><i class="fas fa-terminal"></i> Live Run Diagnostics</h2>
+            <div class="card-header-flex">
+                <h2><i class="fas fa-terminal"></i> Live Run Diagnostics</h2>
+                <button id="clear-logs-btn" class="danger-btn-small">
+                    <i class="fas fa-trash-alt"></i> Clear Logs
+                </button>
+            </div>
             <div class="log-container" id="log-output">
                 <div class="log-entry">Waiting for scan to start...</div>
             </div>

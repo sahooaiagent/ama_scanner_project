@@ -371,11 +371,51 @@ button {
 .primary-btn {
     background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
     color: white;
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 16px 28px;
+    box-shadow: 0 4px 15px rgba(0, 210, 255, 0.2);
+}
+
+.pulse-btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.pulse-btn::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 5px;
+    height: 5px;
+    background: rgba(255, 255, 255, 0.4);
+    opacity: 0;
+    border-radius: 100%;
+    transform: scale(1, 1) translate(-50%);
+    transform-origin: 50% 50%;
+}
+
+.pulse-btn:hover::after {
+    animation: ripple 1s ease-out;
+}
+
+@keyframes ripple {
+    0% {
+        transform: scale(0, 0);
+        opacity: 0.5;
+    }
+
+    100% {
+        transform: scale(100, 100);
+        opacity: 0;
+    }
 }
 
 .primary-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 20px rgba(157, 80, 187, 0.3);
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 12px 25px rgba(157, 80, 187, 0.4);
 }
 
 .secondary-btn {

@@ -566,7 +566,6 @@ def main():
     parser.add_argument('--timeframes', type=str, help='Comma-separated timeframes')
     args, unknown = parser.parse_known_args()
     
-    global TIMEFRAMES
     if args.timeframes:
         TIMEFRAMES = [tf.strip() for tf in args.timeframes.split(',')]
         print(f"Overriding timeframes from CLI: {TIMEFRAMES}")
