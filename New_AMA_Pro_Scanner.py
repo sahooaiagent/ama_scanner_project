@@ -743,70 +743,51 @@ class AMAProSignalDetector:
         return signals
     
     def _apply_ama_pro_logic(self, df: pd.DataFrame) -> Optional[Tuple[str, float]]:
-        """Optimized AMA Pro logic"""
-        # Parameters
-        i_adxLength = 14
-        i_adxThreshold = 25
-        
-        # Regime Detection
-        df['volatility'] = df['returns'].rolling(50).std() * np.sqrt(252) * 100
-        df['hist_vol'] = df['volatility'].rolling(50).mean()
-        df['vol_ratio'] = df['volatility'] / df['hist_vol']
-        
-        # Trend detection
-        df['trend_up'] = (df['close'] > df['ema_20']) & (df['ema_20'] > df['ema_50']) & (df['ema_50'] > df['ema_200'])
-        df['trend_down'] = (df['close'] < df['ema_20']) & (df['ema_20'] < df['ema_50']) & (df['ema_50'] < df['ema_200'])
-        
-        # Crossover detection (vectorized)
-        df['fast_ma'] = df['ema_21']  # Use EMA 21 as fast
-        df['slow_ma'] = df['ema_55']  # Use EMA 55 as slow
-        
+        """
+        AMA Pro signal logic:
+        - BUY: EMA 21 crosses ABOVE EMA 55 within the last 5 candles,
+          AND the high of that BUY candle has NOT been breached by any subsequent candle.
+        - SELL: EMA 21 crosses BELOW EMA 55 within the last 5 candles,
+          AND the low of that SELL candle has NOT been breached by any subsequent candle.
+        """
+        # EMA crossover detection
+        df['fast_ma'] = df['ema_21']
+        df['slow_ma'] = df['ema_55']
+
         df['crossover'] = (df['fast_ma'] > df['slow_ma']) & (df['fast_ma'].shift(1) <= df['slow_ma'].shift(1))
         df['crossunder'] = (df['fast_ma'] < df['slow_ma']) & (df['fast_ma'].shift(1) >= df['slow_ma'].shift(1))
-        
-        # EMA separation filter
-        ema_separation = abs(df['fast_ma'] - df['slow_ma']) / df['close'] * 100
-        df['ema_separation_valid'] = ema_separation >= 0.15
-        
-        # Check last 5 completed candles (index -2 to -6, skipping -1 which is current/forming)
-        # "Within 5 candles from current" = candles at -2, -3, -4, -5, -6
-        max_lookback = min(5, len(df) - 2)
 
-        for candles_back in range(1, max_lookback + 1):
-            idx = -(candles_back + 1)  # -2, -3, -4, -5, -6
+        n = len(df)
+        # Check the last 5 candles: indices n-5, n-4, n-3, n-2, n-1
+        # (most recent first so we return the freshest valid signal)
+        start = max(n - 5, 1)  # don't go before index 1 (need shift(1) for crossover)
 
-            # BUY (LONG) signal check
-            if df['crossover'].iloc[idx] and df['ema_separation_valid'].iloc[idx]:
-                if not df['trend_down'].iloc[idx]:  # Not in bearish regime
-                    # Validate: high of BUY candle must NOT be breached by any subsequent candle
-                    signal_candle_high = df['high'].iloc[idx]
-                    breached = False
-                    # Check all candles after the signal candle (idx+1 to -1 inclusive)
-                    for j in range(idx + 1, 0):
-                        check_idx = j if j != 0 else len(df)
-                        if df['high'].iloc[j] > signal_candle_high:
-                            breached = True
-                            break
+        for i in range(n - 1, start - 1, -1):
+            # --- BUY signal ---
+            if df['crossover'].iloc[i]:
+                signal_high = df['high'].iloc[i]
+                breached = False
+                # Check every candle AFTER the signal candle
+                for j in range(i + 1, n):
+                    if df['high'].iloc[j] > signal_high:
+                        breached = True
+                        break
+                if not breached:
+                    angle = self._calculate_crossover_angle(df, i - n)  # convert to negative index
+                    return ("LONG", angle)
 
-                    if not breached:
-                        angle = self._calculate_crossover_angle(df, idx)
-                        return ("LONG", angle)
-
-            # SELL (SHORT) signal check
-            if df['crossunder'].iloc[idx] and df['ema_separation_valid'].iloc[idx]:
-                if not df['trend_up'].iloc[idx]:  # Not in bullish regime
-                    # Validate: low of SELL candle must NOT be breached by any subsequent candle
-                    signal_candle_low = df['low'].iloc[idx]
-                    breached = False
-                    # Check all candles after the signal candle (idx+1 to -1 inclusive)
-                    for j in range(idx + 1, 0):
-                        if df['low'].iloc[j] < signal_candle_low:
-                            breached = True
-                            break
-
-                    if not breached:
-                        angle = self._calculate_crossover_angle(df, idx)
-                        return ("SHORT", angle)
+            # --- SELL signal ---
+            if df['crossunder'].iloc[i]:
+                signal_low = df['low'].iloc[i]
+                breached = False
+                # Check every candle AFTER the signal candle
+                for j in range(i + 1, n):
+                    if df['low'].iloc[j] < signal_low:
+                        breached = True
+                        break
+                if not breached:
+                    angle = self._calculate_crossover_angle(df, i - n)
+                    return ("SHORT", angle)
 
         return None
     
