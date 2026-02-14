@@ -745,44 +745,51 @@ class AMAProSignalDetector:
     def _apply_ama_pro_logic(self, df: pd.DataFrame) -> Optional[Tuple[str, float]]:
         """
         AMA Pro signal logic:
-        - BUY: EMA 21 crosses ABOVE EMA 55 within the last 5 candles,
+        - BUY: EMA 21 crosses ABOVE EMA 55 within the last 5 COMPLETED candles,
           AND the high of that BUY candle has NOT been breached by any subsequent candle.
-        - SELL: EMA 21 crosses BELOW EMA 55 within the last 5 candles,
+        - SELL: EMA 21 crosses BELOW EMA 55 within the last 5 COMPLETED candles,
           AND the low of that SELL candle has NOT been breached by any subsequent candle.
+
+        Index layout (n = len(df)):
+          ... | n-7 | n-6 | n-5 | n-4 | n-3 | n-2 | n-1
+                     ^^^^^^^^^^^^^^^^^^^^^^^^         ^
+                     5 completed candles to check      current (forming, skip)
         """
-        # EMA crossover detection
         df['fast_ma'] = df['ema_21']
         df['slow_ma'] = df['ema_55']
 
-        df['crossover'] = (df['fast_ma'] > df['slow_ma']) & (df['fast_ma'].shift(1) <= df['slow_ma'].shift(1))
-        df['crossunder'] = (df['fast_ma'] < df['slow_ma']) & (df['fast_ma'].shift(1) >= df['slow_ma'].shift(1))
+        # Crossover: fast crosses ABOVE slow (BUY signal candle)
+        df['crossover'] = (df['fast_ma'] > df['slow_ma']) & \
+                          (df['fast_ma'].shift(1) <= df['slow_ma'].shift(1))
+        # Crossunder: fast crosses BELOW slow (SELL signal candle)
+        df['crossunder'] = (df['fast_ma'] < df['slow_ma']) & \
+                           (df['fast_ma'].shift(1) >= df['slow_ma'].shift(1))
 
         n = len(df)
-        # Check the last 5 candles: indices n-5, n-4, n-3, n-2, n-1
-        # (most recent first so we return the freshest valid signal)
-        start = max(n - 5, 1)  # don't go before index 1 (need shift(1) for crossover)
+        last_completed = n - 2   # index of the most recent completed candle (skip n-1)
+        earliest = max(n - 6, 1) # 5 candles back from last_completed
 
-        for i in range(n - 1, start - 1, -1):
-            # --- BUY signal ---
-            if df['crossover'].iloc[i]:
-                signal_high = df['high'].iloc[i]
+        # Scan from the oldest candidate to newest (earliest valid signal wins)
+        for i in range(earliest, last_completed + 1):
+            # --- BUY (LONG) ---
+            if df['crossover'].iat[i]:
+                signal_high = df['high'].iat[i]
                 breached = False
-                # Check every candle AFTER the signal candle
-                for j in range(i + 1, n):
-                    if df['high'].iloc[j] > signal_high:
+                # Every completed candle AFTER the signal candle up to last_completed
+                for j in range(i + 1, last_completed + 1):
+                    if df['high'].iat[j] > signal_high:
                         breached = True
                         break
                 if not breached:
-                    angle = self._calculate_crossover_angle(df, i - n)  # convert to negative index
+                    angle = self._calculate_crossover_angle(df, i - n)
                     return ("LONG", angle)
 
-            # --- SELL signal ---
-            if df['crossunder'].iloc[i]:
-                signal_low = df['low'].iloc[i]
+            # --- SELL (SHORT) ---
+            if df['crossunder'].iat[i]:
+                signal_low = df['low'].iat[i]
                 breached = False
-                # Check every candle AFTER the signal candle
-                for j in range(i + 1, n):
-                    if df['low'].iloc[j] < signal_low:
+                for j in range(i + 1, last_completed + 1):
+                    if df['low'].iat[j] < signal_low:
                         breached = True
                         break
                 if not breached:
