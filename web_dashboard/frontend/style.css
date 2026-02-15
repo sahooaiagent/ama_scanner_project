@@ -549,6 +549,8 @@ button {
 
 .table-container {
     overflow-x: auto;
+    overflow-y: auto;
+    max-height: 600px;
 }
 
 table {

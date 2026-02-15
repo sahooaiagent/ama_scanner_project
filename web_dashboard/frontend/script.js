@@ -308,20 +308,25 @@ function renderResults(results) {
         const signal = (res.Signal || "N/A").toString();
         const signalClass = signal.toLowerCase().includes('long') ? 'signal-long' : 'signal-short';
 
-        // Parse daily change
-        const dailyChange = res['Daily Change'] || 'N/A';
+        // Format angle
+        const angleVal = parseFloat(res.Angle);
+        const angleStr = isNaN(angleVal) ? 'N/A' : angleVal.toFixed(1) + '°';
+
+        // Parse and format daily change
+        const changeVal = parseFloat(res['Daily Change']);
+        let dailyChangeStr = 'N/A';
         let dailyChangeClass = '';
-        if (dailyChange !== 'N/A') {
-            const changeValue = parseFloat(dailyChange);
-            dailyChangeClass = changeValue >= 0 ? 'daily-change-positive' : 'daily-change-negative';
+        if (!isNaN(changeVal)) {
+            dailyChangeStr = (changeVal >= 0 ? '+' : '') + changeVal.toFixed(2) + '%';
+            dailyChangeClass = changeVal >= 0 ? 'daily-change-positive' : 'daily-change-negative';
         }
 
         row.innerHTML = `
             <td><strong>${res['Crypto Name'] || "Unknown"}</strong></td>
             <td><span class="badge-tf">${res.Timeperiod || "N/A"}</span></td>
             <td class="${signalClass}">${signal}</td>
-            <td>${res.Angle || 0}</td>
-            <td class="${dailyChangeClass}">${dailyChange}</td>
+            <td>${angleStr}</td>
+            <td class="${dailyChangeClass}">${dailyChangeStr}</td>
             <td style="font-size: 0.8rem; color: var(--text-secondary)">${res.Timestamp || "N/A"}</td>
             <td>
                 <button class="tradingview-btn" onclick="openTradingView('${res['Crypto Name']}', '${res.Timeperiod}')">

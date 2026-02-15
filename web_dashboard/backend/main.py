@@ -117,15 +117,30 @@ async def get_results():
     # Sort files by modification time, latest first
     csv_files.sort(key=os.path.getmtime, reverse=True)
     
+    # Column mapping: CSV column names -> frontend expected names
+    column_map = {
+        "symbol": "Crypto Name",
+        "timeframe": "Timeperiod",
+        "signal_type": "Signal",
+        "angle": "Angle",
+        "daily_change": "Daily Change",
+        "timestamp": "Timestamp",
+        "price": "Price",
+        "confidence": "Confidence",
+        "regime": "Regime",
+        "exchange": "Exchange",
+        "volume": "Volume",
+    }
+
     all_results = []
-    # Optionally limit to the last few scan files to keep payload reasonable
-    for latest_file in csv_files[:5]: 
+    for latest_file in csv_files[:5]:
         try:
             df = pd.read_csv(latest_file)
+            df.rename(columns=column_map, inplace=True)
             all_results.extend(df.to_dict(orient="records"))
         except Exception as e:
             print(f"Error reading {latest_file}: {e}")
-            
+
     return {"results": all_results}
 
 @app.post("/clear-logs")
