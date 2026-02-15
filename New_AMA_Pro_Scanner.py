@@ -914,40 +914,75 @@ class DataFetcher:
         )
     
     async def get_top_symbols(self, limit: int = 100) -> List[str]:
-        """Get top symbols by volume"""
+        """Get top symbols by volume with retry on rate limit/ban"""
         cache_key = f"top_symbols:{self.config.exchange_id}:{limit}"
-        
+
         # Check cache
         cached = await self.cache.get(cache_key)
         if cached:
             print(f"📦 Using cached symbols (freshness: 🟢)")
             return cached
-        
-        await self.rate_limiter.acquire("symbols")
-        
-        try:
-            if self.config.exchange_id == 'binance':
-                url = f"{self.base_urls['binance']}/fapi/v1/ticker/24hr"
-            else:
-                url = f"{self.base_urls['mexc']}/api/v3/ticker/24hr"
-            
-            async with self.session.get(url) as response:
-                data = await response.json()
-                
-                # Filter USDT pairs and sort by volume
-                usdt_pairs = [item for item in data if 'USDT' in item['symbol']]
-                sorted_pairs = sorted(usdt_pairs, key=lambda x: float(x['quoteVolume']), reverse=True)
-                
-                symbols = [item['symbol'] for item in sorted_pairs[:limit]]
-                
-                # Cache for 5 minutes (symbols don't change often)
-                await self.cache.set(cache_key, symbols, ttl=300)
-                
-                return symbols
-                
-        except Exception as e:
-            print(f"❌ Error fetching symbols: {e}")
-            return []
+
+        max_retries = 5
+
+        for attempt in range(1, max_retries + 1):
+            await self.rate_limiter.acquire("symbols")
+
+            try:
+                if self.config.exchange_id == 'binance':
+                    url = f"{self.base_urls['binance']}/fapi/v1/ticker/24hr"
+                else:
+                    url = f"{self.base_urls['mexc']}/api/v3/ticker/24hr"
+
+                async with self.session.get(url) as response:
+                    data = await response.json()
+
+                    # Handle Binance error responses (rate limit, IP ban)
+                    if isinstance(data, dict) and 'code' in data:
+                        error_code = data.get('code', 0)
+                        error_msg = data.get('msg', 'Unknown error')
+
+                        if error_code in (-1003, -1015):  # Rate limit / IP ban
+                            # Parse ban expiry if available
+                            wait_seconds = 60 * attempt  # Progressive backoff
+                            if 'banned until' in error_msg:
+                                try:
+                                    ban_ts = int(''.join(filter(str.isdigit, error_msg.split('banned until')[1].split('.')[0])))
+                                    wait_seconds = max(1, (ban_ts / 1000) - time.time())
+                                    wait_seconds = min(wait_seconds, 600)  # Cap at 10 minutes
+                                except (ValueError, IndexError):
+                                    pass
+
+                            print(f"⚠️ Binance rate limit (attempt {attempt}/{max_retries}): {error_msg}")
+                            print(f"⏳ Waiting {int(wait_seconds)} seconds before retry...")
+                            await asyncio.sleep(wait_seconds)
+                            continue
+                        else:
+                            print(f"❌ Binance API error: [{error_code}] {error_msg}")
+                            return []
+
+                    if not isinstance(data, list):
+                        print(f"❌ Unexpected API response type: {type(data).__name__}")
+                        return []
+
+                    # Filter USDT pairs and sort by volume
+                    usdt_pairs = [item for item in data if 'USDT' in item.get('symbol', '')]
+                    sorted_pairs = sorted(usdt_pairs, key=lambda x: float(x.get('quoteVolume', 0)), reverse=True)
+
+                    symbols = [item['symbol'] for item in sorted_pairs[:limit]]
+
+                    # Cache for 5 minutes (symbols don't change often)
+                    await self.cache.set(cache_key, symbols, ttl=300)
+
+                    return symbols
+
+            except Exception as e:
+                print(f"❌ Error fetching symbols (attempt {attempt}/{max_retries}): {e}")
+                if attempt < max_retries:
+                    await asyncio.sleep(10 * attempt)
+
+        print(f"❌ Failed to fetch symbols after {max_retries} attempts")
+        return []
     
     async def fetch_ohlcv(self, symbol: str, timeframe: str, limit: int = 300) -> Optional[pd.DataFrame]:
         """Fetch OHLCV data with caching"""
@@ -980,7 +1015,14 @@ class DataFetcher:
             
             async with self.session.get(url, params=params) as response:
                 data = await response.json()
-                
+
+                # Handle Binance error responses
+                if isinstance(data, dict) and 'code' in data:
+                    return None
+
+                if not isinstance(data, list) or len(data) == 0:
+                    return None
+
                 # Convert to DataFrame
                 df = pd.DataFrame(data, columns=[
                     'timestamp', 'open', 'high', 'low', 'close', 'volume',
