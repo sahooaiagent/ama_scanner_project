@@ -85,7 +85,7 @@ class ScannerConfig:
     websocket_timeout: int = 10
     
     # Redis settings (Phase 3)
-    redis_enabled: bool = True
+    redis_enabled: bool = False  # Changed to False by default
     redis_host: str = 'localhost'
     redis_port: int = 6379
     redis_db: int = 0
@@ -105,9 +105,6 @@ class ScannerConfig:
 
 # Timeframe mapping for resampling
 TIMEFRAME_MAPPING = {
-    '1m': '1min',
-    '3m': '3min',
-    '5m': '5min',
     '15m': '15min',
     '30m': '30min',
     '1h': '1h',
@@ -116,10 +113,9 @@ TIMEFRAME_MAPPING = {
     '4h': '4h',
     '5h': '5h',
     '6h': '6h',
-    '8h': '8h',
     '12h': '12h',
     '1d': '1d',
-    '3d': '3d',
+    '2d': '2d',
     '1w': '1w',
     '1M': '1ME'
 }
@@ -391,7 +387,7 @@ class WebSocketManager:
                 async with websockets.connect(
                     url,
                     ping_interval=self.config.websocket_ping_interval,
-                    timeout=self.config.websocket_timeout
+                    close_timeout=self.config.websocket_timeout
                 ) as ws:
                     print(f"✅ WebSocket connected to {url}")
                     
@@ -742,150 +738,71 @@ class AMAProSignalDetector:
         
         return signals
     
-    # Mapping from adaptive_len thresholds to actual EMA period column names
-    _FAST_EMA_THRESHOLDS = [(9, 8), (11, 10), (13, 12), (15, 14), (17, 16), (19, 18)]
-    _FAST_EMA_DEFAULT = 21
-    _SLOW_EMA_THRESHOLDS = [(28, 26), (32, 30), (36, 34), (40, 38), (44, 42), (51, 47)]
-    _SLOW_EMA_DEFAULT = 55
-
-    @staticmethod
-    def _select_ema_period(adaptive_len: float, thresholds: list, default: int) -> int:
-        """Given a continuous adaptive length, return the discrete EMA period to use."""
-        for threshold, period in thresholds:
-            if adaptive_len <= threshold:
-                return period
-        return default
-
     def _apply_ama_pro_logic(self, df: pd.DataFrame) -> Optional[Tuple[str, float]]:
-        """
-        Adaptive EMA Pro signal logic (ported from sahooaiagent):
-        - Uses adaptive EMA periods (fast: 8-21, slow: 21-55) based on market regime.
-        - Checks only the PREVIOUS completed candle (index -2, skipping -1 forming candle)
-          for crossover using CONSISTENT EMA periods.
-        - BUY: Adaptive fast EMA crosses ABOVE adaptive slow EMA on the previous candle.
-        - SELL: Adaptive fast EMA crosses BELOW adaptive slow EMA on the previous candle.
-        - Filters: EMA separation (0.15%), price confirmation (0.2%), regime filter.
-        """
-        # --- Regime Detection ---
+        """Optimized AMA Pro logic"""
+        # Parameters
+        i_adxLength = 14
         i_adxThreshold = 25
-        i_volLookback = 50
-
-        # Volatility regime
-        df['hist_vol'] = df['log_returns'].rolling(window=i_volLookback).std() * np.sqrt(252) * 100
-        df['hist_vol_mean'] = df['hist_vol'].rolling(window=i_volLookback).mean()
-        df['vol_ratio'] = df['hist_vol'] / df['hist_vol_mean']
-
-        df['volRegime'] = np.select(
-            [df['vol_ratio'] > 1.3, df['vol_ratio'] < 0.7],
-            ['High', 'Low'],
-            default='Normal'
-        )
-
-        # Trend regime (ADX already calculated)
-        df['trendRegime'] = np.where(df['ADX'] > i_adxThreshold, 'Trending', 'Ranging')
-
-        # Direction regime (EMAs 20, 50, 200 already calculated)
-        trend_up = (df['close'] > df['ema_20']) & (df['ema_20'] > df['ema_50']) & (df['ema_50'] > df['ema_200'])
-        trend_down = (df['close'] < df['ema_20']) & (df['ema_20'] < df['ema_50']) & (df['ema_50'] < df['ema_200'])
-        df['directionRegime'] = np.select([trend_up, trend_down], ['Bullish', 'Bearish'], default='Neutral')
-
-        # --- Adaptive Period Calculation ---
-        i_emaFastMin, i_emaFastMax = 8, 21
-        i_emaSlowMin, i_emaSlowMax = 21, 55
-
-        vol_adjust = np.select(
-            [df['volRegime'] == 'High', df['volRegime'] == 'Low'],
-            [0.7, 1.3], default=1.0
-        )
-        trend_adjust = np.where(df['trendRegime'] == 'Trending', 0.8, 1.2)
-
-        tf_multiplier = 1.2
-        sensitivity_mult = 1.0
-
-        combined_adjust = vol_adjust * trend_adjust * tf_multiplier * sensitivity_mult
-        adjust_factor = np.clip(1.0 / combined_adjust, 0.5, 1.5)
-
-        fast_range = i_emaFastMax - i_emaFastMin  # 13
-        slow_range = i_emaSlowMax - i_emaSlowMin  # 34
-
-        adaptive_fast_len = i_emaFastMin + fast_range * (1 - adjust_factor)
-        adaptive_slow_len = i_emaSlowMin + slow_range * (1 - adjust_factor)
-        adaptive_slow_len = np.maximum(adaptive_slow_len, adaptive_fast_len + 5)
-
-        # Store as columns for per-candle lookup
-        df['_adaptive_fast_len'] = adaptive_fast_len
-        df['_adaptive_slow_len'] = adaptive_slow_len
-
-        # --- Previous candle verification (index -2, skip -1 forming candle) ---
-        n = len(df)
-        abs_idx = n - 2  # Previous completed candle
-
-        if abs_idx < 1:
-            return None  # Need at least one candle before it
-
-        # Determine which EMA periods to use at the previous candle
-        fast_len_val = df['_adaptive_fast_len'].iat[abs_idx]
-        slow_len_val = df['_adaptive_slow_len'].iat[abs_idx]
-
-        fast_period = self._select_ema_period(fast_len_val, self._FAST_EMA_THRESHOLDS, self._FAST_EMA_DEFAULT)
-        slow_period = self._select_ema_period(slow_len_val, self._SLOW_EMA_THRESHOLDS, self._SLOW_EMA_DEFAULT)
-
-        fast_col = f'ema_{fast_period}'
-        slow_col = f'ema_{slow_period}'
-
-        # Use the SAME EMA columns for current candle AND the one before it
-        fast_curr = df[fast_col].iat[abs_idx]
-        slow_curr = df[slow_col].iat[abs_idx]
-        fast_prev = df[fast_col].iat[abs_idx - 1]
-        slow_prev = df[slow_col].iat[abs_idx - 1]
-
-        is_long_crossover = (fast_curr > slow_curr) and (fast_prev <= slow_prev)
-        is_short_crossover = (fast_curr < slow_curr) and (fast_prev >= slow_prev)
-
-        if not is_long_crossover and not is_short_crossover:
-            return None  # No crossover on the previous candle
-
-        # --- Regime & filter checks for the previous candle ---
-        candle = df.iloc[-2]
-        direction = candle['directionRegime']
-        trend = candle['trendRegime']
-        is_choppy = (trend == 'Ranging') and (direction == 'Neutral')
-
+        
+        # Regime Detection
+        df['volatility'] = df['returns'].rolling(50).std() * np.sqrt(252) * 100
+        df['hist_vol'] = df['volatility'].rolling(50).mean()
+        df['vol_ratio'] = df['volatility'] / df['hist_vol']
+        
+        # Trend detection
+        df['trend_up'] = (df['close'] > df['ema_20']) & (df['ema_20'] > df['ema_50']) & (df['ema_50'] > df['ema_200'])
+        df['trend_down'] = (df['close'] < df['ema_20']) & (df['ema_20'] < df['ema_50']) & (df['ema_50'] < df['ema_200'])
+        
+        # Crossover detection (vectorized)
+        df['fast_ma'] = df['ema_21']  # Use EMA 21 as fast
+        df['slow_ma'] = df['ema_55']  # Use EMA 55 as slow
+        
+        df['crossover'] = (df['fast_ma'] > df['slow_ma']) & (df['fast_ma'].shift(1) <= df['slow_ma'].shift(1))
+        df['crossunder'] = (df['fast_ma'] < df['slow_ma']) & (df['fast_ma'].shift(1) >= df['slow_ma'].shift(1))
+        
         # EMA separation filter
-        ema_sep_pct = abs(fast_curr - slow_curr) / candle['close'] * 100
-        ema_sep_valid = ema_sep_pct >= 0.15
-
-        # --- Check LONG ---
-        if is_long_crossover:
-            price_confirms = candle['close'] >= fast_curr * 0.998
-
-            if (direction == 'Bearish' or not ema_sep_valid or
-                not price_confirms or is_choppy):
-                return None
-
-            angle = self._calculate_crossover_angle(df, fast_col, slow_col, abs_idx)
-            return ("LONG", angle)
-
-        # --- Check SHORT ---
-        if is_short_crossover:
-            price_confirms = candle['close'] <= fast_curr * 1.002
-
-            if (direction == 'Bullish' or not ema_sep_valid or
-                not price_confirms or is_choppy):
-                return None
-
-            angle = self._calculate_crossover_angle(df, fast_col, slow_col, abs_idx)
-            return ("SHORT", angle)
-
+        ema_separation = abs(df['fast_ma'] - df['slow_ma']) / df['close'] * 100
+        df['ema_separation_valid'] = ema_separation >= 0.15
+        
+        # Check last 5 candles
+        lookback = min(5, len(df) - 1)
+        
+        for i in range(2, lookback + 2):
+            idx = -i
+            
+            # Long signal
+            if df['crossover'].iloc[idx] and df['ema_separation_valid'].iloc[idx]:
+                if not df['trend_down'].iloc[idx]:  # Not bearish
+                    # Price validation
+                    signal_candle_high = df['high'].iloc[idx]
+                    max_high_after = df['high'].iloc[idx:].max()
+                    
+                    if max_high_after <= signal_candle_high:
+                        # Calculate angle
+                        angle = self._calculate_crossover_angle(df, idx)
+                        return ("LONG", angle)
+            
+            # Short signal
+            if df['crossunder'].iloc[idx] and df['ema_separation_valid'].iloc[idx]:
+                if not df['trend_up'].iloc[idx]:  # Not bullish
+                    # Price validation
+                    signal_candle_low = df['low'].iloc[idx]
+                    min_low_after = df['low'].iloc[idx:].min()
+                    
+                    if min_low_after >= signal_candle_low:
+                        # Calculate angle
+                        angle = self._calculate_crossover_angle(df, idx)
+                        return ("SHORT", angle)
+        
         return None
-
-    def _calculate_crossover_angle(self, df: pd.DataFrame, fast_col: str, slow_col: str, abs_idx: int) -> float:
-        """Calculate crossover angle using the specific EMA columns at the given index."""
-        angle_lookback = min(3, abs_idx)
-        if angle_lookback > 0:
-            fast_slope = (df[fast_col].iat[abs_idx] - df[fast_col].iat[abs_idx - angle_lookback]) / angle_lookback
-            slow_slope = (df[slow_col].iat[abs_idx] - df[slow_col].iat[abs_idx - angle_lookback]) / angle_lookback
-            slope_diff = (fast_slope - slow_slope) / df['close'].iat[abs_idx]
+    
+    def _calculate_crossover_angle(self, df: pd.DataFrame, idx: int) -> float:
+        """Calculate crossover angle"""
+        lookback = min(3, abs(idx))
+        if lookback > 0:
+            fast_slope = (df['fast_ma'].iloc[idx] - df['fast_ma'].iloc[idx - lookback]) / lookback
+            slow_slope = (df['slow_ma'].iloc[idx] - df['slow_ma'].iloc[idx - lookback]) / lookback
+            slope_diff = (fast_slope - slow_slope) / df['close'].iloc[idx]
             return float(np.degrees(np.arctan(slope_diff * 100)))
         return 0.0
 
@@ -1334,23 +1251,22 @@ class AMAProScanner:
     
     async def save_results(self):
         """Save results to CSV and send email"""
-        if self.signals:
-            # Create DataFrame
-            df = pd.DataFrame([s.to_dict() for s in self.signals])
-
-            # Save to CSV
-            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f"ama_pro_scan_results_{timestamp}.csv"
-            df.to_csv(filename, index=False)
-            print(f"💾 Results saved to {filename}")
-        else:
-            print("📧 No signals found in this scan")
-
-        # Always send email notification (signals or status update)
+        if not self.signals:
+            print("📧 No signals to save")
+            return
+        
+        # Create DataFrame
+        df = pd.DataFrame([s.to_dict() for s in self.signals])
+        
+        # Save to CSV
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"ama_pro_scan_results_{timestamp}.csv"
+        df.to_csv(filename, index=False)
+        print(f"💾 Results saved to {filename}")
+        
+        # Send email notification
         if self.config.gmail_password:
             await self.send_email_notification()
-        else:
-            print("⚠️ Gmail password not set. Set GMAIL_APP_PASSWORD env variable to enable email notifications.")
     
     async def send_email_notification(self):
         """Send email with results"""
