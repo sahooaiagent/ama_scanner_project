@@ -5,6 +5,7 @@ import json
 import asyncio
 import signal
 from typing import List, Optional
+from pathlib import Path
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -12,6 +13,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.memory import MemoryJobStore
 import pandas as pd
 import glob
+
+# Resolve scanner path relative to this file (project root)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+SCANNER_PATH = str(PROJECT_ROOT / "New_AMA_Pro_Scanner.py")
 
 app = FastAPI(title="AMA Pro Scanner Dashboard")
 
@@ -47,7 +52,7 @@ async def run_scanner(exchange: str, timeframes: List[str], symbol_limit: int):
 
     tf_str = ",".join(timeframes)
     cmd = [
-        "python3", "../New_AMA_Pro_Scanner.py",
+        "python3", SCANNER_PATH,
         "--exchange", exchange,
         "--symbols", str(symbol_limit),
         "--timeframes", tf_str,
