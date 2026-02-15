@@ -100,8 +100,6 @@ class ScannerConfig:
     gmail_password: str = os.environ.get('GMAIL_APP_PASSWORD', '')
     receiver_email: str = 'sahooaiagent@gmail.com'
     
-    # File cleanup
-    keep_last_results: int = 10
 
 # Timeframe mapping for resampling
 TIMEFRAME_MAPPING = {
@@ -1375,18 +1373,20 @@ class AMAProScanner:
         return all_signals
     
     async def save_results(self):
-        """Save results to CSV and send email"""
-        if self.signals:
-            # Create DataFrame
-            df = pd.DataFrame([s.to_dict() for s in self.signals])
+        """Save results to JSON and send email"""
+        # Build results payload
+        scan_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        results_data = {
+            "scan_time": scan_time,
+            "total_signals": len(self.signals),
+            "signals": [s.to_dict() for s in self.signals]
+        }
 
-            # Save to CSV
-            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f"ama_pro_scan_results_{timestamp}.csv"
-            df.to_csv(filename, index=False)
-            print(f"💾 Results saved to {filename}")
-        else:
-            print("📧 No signals found in this scan")
+        # Save to a single JSON file (overwritten each run)
+        results_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scan_results.json")
+        with open(results_file, "w") as f:
+            json.dump(results_data, f, indent=2)
+        print(f"💾 Results saved to scan_results.json ({len(self.signals)} signals)")
 
         # Always send email notification (signals or status update)
         if self.config.gmail_password:
@@ -1429,20 +1429,7 @@ class AMAProScanner:
         except Exception as e:
             print(f"❌ Failed to send email: {e}")
     
-    async def cleanup_old_files(self):
-        """Clean up old result files"""
-        import glob
-        
-        try:
-            files = glob.glob("ama_pro_scan_results_*.csv")
-            if len(files) > self.config.keep_last_results:
-                # Sort by modification time
-                files.sort(key=os.path.getmtime, reverse=True)
-                for old_file in files[self.config.keep_last_results:]:
-                    os.remove(old_file)
-                    print(f"🗑️ Cleaned up: {old_file}")
-        except Exception as e:
-            print(f"⚠️ Cleanup warning: {e}")
+
     
     async def run(self):
         """Main execution loop"""
@@ -1455,10 +1442,7 @@ class AMAProScanner:
             
             # Save results
             await self.save_results()
-            
-            # Cleanup
-            await self.cleanup_old_files()
-            
+
             # Keep dashboard running for a bit
             await asyncio.sleep(5)
             

@@ -11,8 +11,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.memory import MemoryJobStore
-import pandas as pd
-import glob
 
 # Resolve scanner path relative to this file (project root)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -35,8 +33,6 @@ jobstores = {
 scheduler = AsyncIOScheduler(jobstores=jobstores)
 
 LOG_FILE = str(PROJECT_ROOT / "scanner_run.log")
-RESULTS_DIR = ".." # Results are saved as CSVs in the root by the scanner
-
 # Track running processes
 running_process = None
 
@@ -109,38 +105,36 @@ async def trigger_scan(request: ScanRequest, background_tasks: BackgroundTasks):
 
 @app.get("/results")
 async def get_results():
-    """Fetches the latest scan results from CSV files."""
-    csv_files = glob.glob(str(PROJECT_ROOT / "ama_pro_scan_results_*.csv"))
-    if not csv_files:
-        return {"results": []}
-    
-    # Sort files by modification time, latest first
-    csv_files.sort(key=os.path.getmtime, reverse=True)
-    
-    # Column mapping: CSV column names -> frontend expected names
-    column_map = {
-        "symbol": "Crypto Name",
-        "timeframe": "Timeperiod",
-        "signal_type": "Signal",
-        "angle": "Angle",
-        "daily_change": "Daily Change",
-        "timestamp": "Timestamp",
-        "price": "Price",
-        "confidence": "Confidence",
-        "regime": "Regime",
-        "exchange": "Exchange",
-        "volume": "Volume",
-    }
+    """Fetches the latest scan results from scan_results.json."""
+    results_file = PROJECT_ROOT / "scan_results.json"
+    if not results_file.exists():
+        return {"results": [], "scan_time": None}
 
-    # Only read the most recent CSV file
-    latest_file = csv_files[0]
     try:
-        df = pd.read_csv(latest_file)
-        df.rename(columns=column_map, inplace=True)
-        return {"results": df.to_dict(orient="records")}
+        with open(results_file, "r") as f:
+            data = json.load(f)
+
+        # Map signal fields to frontend expected names
+        results = []
+        for s in data.get("signals", []):
+            results.append({
+                "Crypto Name": s.get("symbol", ""),
+                "Timeperiod": s.get("timeframe", ""),
+                "Signal": s.get("signal_type", ""),
+                "Angle": s.get("angle", 0),
+                "Daily Change": s.get("daily_change", 0),
+                "Timestamp": s.get("timestamp", ""),
+                "Price": s.get("price", 0),
+                "Confidence": s.get("confidence", 0),
+                "Regime": s.get("regime", ""),
+                "Exchange": s.get("exchange", ""),
+                "Volume": s.get("volume", 0),
+            })
+
+        return {"results": results, "scan_time": data.get("scan_time")}
     except Exception as e:
-        print(f"Error reading {latest_file}: {e}")
-        return {"results": []}
+        print(f"Error reading scan_results.json: {e}")
+        return {"results": [], "scan_time": None}
 
 @app.post("/clear-logs")
 async def clear_logs():
