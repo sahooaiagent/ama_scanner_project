@@ -10,6 +10,8 @@ env/
 .env
 scan_log.txt
 test_tty.txt
+scanner_run.log
+scan_results.json
 web_dashboard/*.log
 web_dashboard/backend_status.log
 web_dashboard/frontend_status.log
