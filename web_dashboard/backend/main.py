@@ -34,7 +34,7 @@ jobstores = {
 }
 scheduler = AsyncIOScheduler(jobstores=jobstores)
 
-LOG_FILE = "../scanner_run.log"
+LOG_FILE = str(PROJECT_ROOT / "scanner_run.log")
 RESULTS_DIR = ".." # Results are saved as CSVs in the root by the scanner
 
 # Track running processes
@@ -110,7 +110,7 @@ async def trigger_scan(request: ScanRequest, background_tasks: BackgroundTasks):
 @app.get("/results")
 async def get_results():
     """Fetches the latest scan results from CSV files."""
-    csv_files = glob.glob("../ama_pro_scan_results_*.csv")
+    csv_files = glob.glob(str(PROJECT_ROOT / "ama_pro_scan_results_*.csv"))
     if not csv_files:
         return {"results": []}
     
