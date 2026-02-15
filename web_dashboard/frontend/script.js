@@ -22,10 +22,10 @@ let logInterval = null;
 let allResults = [];
 let currentSort = { column: null, direction: 'asc' };
 const tfMap = {
-    "15min": "15m", "30min": "30m", "45min": "45m",
+    "3min": "3m", "5min": "5m", "15min": "15m", "30min": "30m",
     "1hour": "1h", "2hour": "2h", "4hour": "4h",
-    "12hour": "12h", "1day": "1d", "2day": "2d",
-    "1week": "1w", "1Month": "1M"
+    "6hour": "6h", "8hour": "8h", "12hour": "12h",
+    "1day": "1d", "3day": "3d", "1week": "1w", "1Month": "1M"
 };
 const reverseTfMap = Object.fromEntries(Object.entries(tfMap).map(([k, v]) => [v, k]));
 let allTimeframes = Object.keys(tfMap);

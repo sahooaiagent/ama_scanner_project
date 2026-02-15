@@ -47,10 +47,11 @@ async def run_scanner(exchange: str, timeframes: List[str], symbol_limit: int):
 
     tf_str = ",".join(timeframes)
     cmd = [
-        "python3", "ama_pro_scanner.py",
-        str(symbol_limit),
+        "python3", "../New_AMA_Pro_Scanner.py",
         "--exchange", exchange,
-        "--timeframes", tf_str
+        "--symbols", str(symbol_limit),
+        "--timeframes", tf_str,
+        "--no-websocket", "--no-ml", "--no-redis"
     ]
 
     with open(LOG_FILE, "a") as log:
@@ -142,7 +143,7 @@ async def get_logs():
 @app.get("/config")
 async def get_config():
     return {
-        "available_timeframes": ["15m", "30m", "45m", "1h", "2h", "4h", "12h", "1d", "2d", "1w", "1M"],
+        "available_timeframes": ["3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w", "1M"],
         "available_symbol_limits": [20, 50, 100, 200, 300, 400, 500]
     }
 
