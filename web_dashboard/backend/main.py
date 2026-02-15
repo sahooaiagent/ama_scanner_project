@@ -132,16 +132,15 @@ async def get_results():
         "volume": "Volume",
     }
 
-    all_results = []
-    for latest_file in csv_files[:5]:
-        try:
-            df = pd.read_csv(latest_file)
-            df.rename(columns=column_map, inplace=True)
-            all_results.extend(df.to_dict(orient="records"))
-        except Exception as e:
-            print(f"Error reading {latest_file}: {e}")
-
-    return {"results": all_results}
+    # Only read the most recent CSV file
+    latest_file = csv_files[0]
+    try:
+        df = pd.read_csv(latest_file)
+        df.rename(columns=column_map, inplace=True)
+        return {"results": df.to_dict(orient="records")}
+    except Exception as e:
+        print(f"Error reading {latest_file}: {e}")
+        return {"results": []}
 
 @app.post("/clear-logs")
 async def clear_logs():
