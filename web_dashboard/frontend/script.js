@@ -21,6 +21,7 @@ const resultsCount = document.getElementById('results-count');
 let logInterval = null;
 let allResults = [];
 let currentSort = { column: null, direction: 'asc' };
+let wasScanRunning = false;
 const tfMap = {
     "3min": "3m", "5min": "5m", "15min": "15m", "30min": "30m",
     "1hour": "1h", "2hour": "2h", "4hour": "4h",
@@ -223,13 +224,18 @@ function updateStats() {
     animateValue('long-signals', 0, longSignals, 1000);
     animateValue('short-signals', 0, shortSignals, 1000);
 
-    // Update last scan time
+    // Update last scan time — find the most recent timestamp across all results
     if (allResults.length > 0) {
-        const lastScan = allResults[allResults.length - 1].Timestamp;
-        if (lastScan) {
-            const scanDate = new Date(lastScan);
+        let latestTime = null;
+        for (const r of allResults) {
+            if (r.Timestamp) {
+                const t = new Date(r.Timestamp);
+                if (!latestTime || t > latestTime) latestTime = t;
+            }
+        }
+        if (latestTime) {
             const now = new Date();
-            const diffMs = now - scanDate;
+            const diffMs = now - latestTime;
             const diffMins = Math.floor(diffMs / 60000);
 
             let timeAgo;
@@ -378,6 +384,11 @@ async function runScan() {
 
     runBtn.disabled = true;
     runBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning...';
+    wasScanRunning = true;
+
+    // Clear previous results
+    allResults = [];
+    filterAndDisplayResults();
 
     // Add SCAN IN PROGRESS message
     const exchangeName = exchange.toUpperCase();
@@ -610,11 +621,16 @@ async function checkScanStatus() {
         const data = await response.json();
 
         if (data.scan_running) {
+            wasScanRunning = true;
             runBtn.disabled = true;
             runBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning...';
-        } else if (runBtn.disabled && !runBtn.innerHTML.includes('Scanning')) {
-            // Don't re-enable if it's disabled for another reason
-        } else if (!runBtn.innerHTML.includes('Scanning')) {
+        } else {
+            // Scan just finished — fetch new results
+            if (wasScanRunning) {
+                wasScanRunning = false;
+                await fetchResults();
+                showToast('Scan completed! Results updated.', 'success');
+            }
             runBtn.disabled = false;
             runBtn.innerHTML = '<i class="fas fa-play"></i> Run Scanner Now';
         }
